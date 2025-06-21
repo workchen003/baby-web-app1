@@ -8,6 +8,15 @@
     ],
     "frameworksBackend": {
       "region": "asia-east1"
-    }
+    },
+    "rewrites": [
+      {
+        "source": "**",
+        "function": {
+          "functionId": "ssrbabixapp",
+          "region": "asia-east1"
+        }
+      }
+    ]
   }
 }
