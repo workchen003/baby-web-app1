@@ -37,4 +37,4 @@ jobs:
         run: |
           pnpm add -g firebase-tools
           firebase experiments:enable webframeworks # <-- 打開隱藏的功能開關！
-          firebase deploy --only hosting --project babix-app
+          firebase deploy --only hosting --project babix-app --force
