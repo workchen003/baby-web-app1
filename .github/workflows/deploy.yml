@@ -1,59 +1,40 @@
-# GitHub Actions 工作流程的名稱
 name: Deploy to Firebase Hosting
 
-# 觸發條件：當有程式碼被 push 到 main 分支時
 on:
   push:
     branches:
       - main
 
-# 權限設定：授予官方驗證 Action 所需的權限
 permissions:
   contents: 'read'
   id-token: 'write'
 
-# 工作內容
 jobs:
   build_and_deploy:
-    # 運行的虛擬機環境
     runs-on: ubuntu-latest
-
-    # 工作的步驟
     steps:
-      # 步驟 1: 下載您的程式碼
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # 步驟 2: 設定 pnpm
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 10
-
-      # 步驟 3: 設定 Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-
-      # 步驟 4: 安裝依賴套件
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
-
-      # 步驟 5: 打包建置專案
       - name: Build Project
         run: pnpm build
-
-      # 【全新】步驟 6: 使用 Google 官方 Action 進行驗證
       - name: Authenticate to Google Cloud
         id: auth
         uses: 'google-github-actions/auth@v2'
         with:
           credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
-
-      # 【全新】步驟 7: 安裝 Firebase CLI 並執行部署
       - name: Install Firebase CLI and Deploy
         run: |
           pnpm add -g firebase-tools
+          firebase experiments:enable webframeworks # <-- 打開隱藏的功能開關！
           firebase deploy --only hosting --project babix-app
