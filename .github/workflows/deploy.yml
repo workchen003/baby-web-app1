@@ -34,7 +34,7 @@ jobs:
 
       # 步驟 4: 安裝專案所有依賴套件
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       # 步驟 5: 打包建置 Next.js 專案
       - name: Build Project
