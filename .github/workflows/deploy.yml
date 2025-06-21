@@ -56,4 +56,4 @@ jobs:
       - name: Install Firebase CLI and Deploy
         run: |
           pnpm add -g firebase-tools
-          firebase deploy --only hosting --project babix-web-app
+          firebase deploy --only hosting --project babix-app
