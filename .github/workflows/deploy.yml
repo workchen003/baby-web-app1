@@ -18,6 +18,11 @@ jobs:
       # 步驟 1: 從 GitHub 下載您的專案程式碼
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: List files in the repository
+        run: ls -R
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
 
       # 步驟 2: 設定 pnpm 套件管理器
       - name: Setup pnpm
@@ -34,7 +39,8 @@ jobs:
 
       # 步驟 4: 安裝專案所有依賴套件
       - name: Install Dependencies
-        run: pnpm install --no-frozen-lockfile
+        working-directory: ./babix-web-app
+        run: pnpm install -frozen-lockfile
 
       # 步驟 5: 打包建置 Next.js 專案
       - name: Build Project
