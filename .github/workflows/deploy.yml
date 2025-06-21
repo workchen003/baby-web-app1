@@ -1,5 +1,5 @@
 # GitHub Actions 工作流程的名稱
-name: Deploy to Firebase Hosting (Debug Mode)
+name: Deploy to Firebase Hosting
 
 # 觸發條件：當有程式碼被 push 到 main 分支時
 on:
@@ -7,9 +7,14 @@ on:
     branches:
       - main
 
+# 權限設定：授予官方驗證 Action 所需的權限
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
 # 工作內容
 jobs:
-  build_and_deploy_debug:
+  build_and_deploy:
     # 運行的虛擬機環境
     runs-on: ubuntu-latest
 
@@ -40,21 +45,15 @@ jobs:
       - name: Build Project
         run: pnpm build
 
-      # 【新增】步驟 6: 全域安裝 Firebase CLI
-      - name: Install Firebase CLI
-        run: pnpm add -g firebase-tools
+      # 【全新】步驟 6: 使用 Google 官方 Action 進行驗證
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
 
-      # 【修改】步驟 7: 手動執行部署並開啟除錯模式
-      - name: Deploy to Firebase with Debug Output
-        env:
-          # 將我們存在 GitHub Secrets 的金鑰內容，寫入一個環境變數
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      # 【全新】步驟 7: 安裝 Firebase CLI 並執行部署
+      - name: Install Firebase CLI and Deploy
         run: |
-          # 步驟 7.1: 將環境變數中的 JSON 金鑰內容，寫入一個暫存檔案
-          echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > ./gcp-sa-key.json
-
-          # 步驟 7.2: 設定 Google Cloud 的憑證環境變數，讓它指向我們剛建立的金鑰檔案
-          export GOOGLE_APPLICATION_CREDENTIALS=./gcp-sa-key.json
-
-          # 步驟 7.3: 執行部署指令，並加上 --debug 參數
-          firebase deploy --only hosting --project babix-web-app --debug
+          pnpm add -g firebase-tools
+          firebase deploy --only hosting --project babix-web-app
