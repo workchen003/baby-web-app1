@@ -1,4 +1,4 @@
-// src/app/join/page.tsx (優化後)
+// src/app/join/page.tsx (修正後)
 
 'use client';
 
@@ -22,19 +22,23 @@ export default function JoinFamilyPage() {
       setError('請輸入邀請碼。');
       return;
     }
-    setIsJoining(true); // 按鈕一按就禁用
+    setIsJoining(true);
     setError('');
     setSuccess('');
     try {
       const result = await joinFamilyWithCode(inviteCode.toUpperCase());
       if (result.success) {
         setSuccess('成功加入家庭！即將為您導向主頁...');
-        // 成功後不需要再啟用按鈕，直接等待跳轉
         setTimeout(() => router.push('/'), 2000);
       }
-    } catch (err: any) {
-      setError(err.message || '加入失敗，請確認邀請碼是否正確。');
-      setIsJoining(false); // 只有失敗時才再次啟用按鈕，讓使用者可以重試
+    } catch (err) { // 【修改】移除 any 型別
+      // 進行型別檢查，確保 err 是一個 Error 物件
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('加入失敗，請確認邀請碼是否正確。');
+      }
+      setIsJoining(false);
     }
   };
 
@@ -53,7 +57,6 @@ export default function JoinFamilyPage() {
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
             placeholder="ABC123"
-            // 當正在處理或已成功時，禁用輸入框
             disabled={isJoining}
             className="w-full px-3 py-2 text-center text-lg tracking-widest border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-200"
           />
