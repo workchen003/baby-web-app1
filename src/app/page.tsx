@@ -109,7 +109,13 @@ const AppHeader = () => {
 const MainContent = () => {
     const { user, loading } = useAuth();
     const router = useRouter();
-    const handleCreateAccountClick = () => { user ? router.push('/dashboard') : signInWithGoogle(); };
+const handleCreateAccountClick = () => {
+    if (user) {
+      router.push('/dashboard');
+    } else {
+      signInWithGoogle();
+    }
+};
 
     return (
         <main className="container mx-auto flex flex-grow flex-col items-center justify-center px-6 py-12 text-center">
