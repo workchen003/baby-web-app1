@@ -1,36 +1,53 @@
-// src/contexts/AuthContext.tsx
-
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // 使用 tsconfig.json 中的路徑別名 @/*
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 
-// 定義 Context 的值型別
 interface AuthContextType {
   user: User | null;
   loading: boolean;
 }
 
-// 建立 Context
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
 });
 
-// 建立 Context Provider 元件
+const syncUserData = async (user: User) => {
+  const userRef = doc(db, 'users', user.uid);
+  const userData = {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+    authProvider: "google",
+    lastLogin: serverTimestamp(),
+  };
+  await setDoc(userRef, userData, { merge: true });
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // onAuthStateChanged 會在使用者登入、登出或 token 刷新時觸發
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        try {
+          // 在此處嘗試同步使用者資料
+          await syncUserData(user);
+        } catch (error) {
+          // 如果同步失敗，在控制台印出嚴重錯誤
+          console.error("CRITICAL: Error during user data sync.", error);
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
-    // 元件卸載時取消監聽
     return () => unsubscribe();
   }, []);
 
@@ -39,7 +56,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// 建立自訂 Hook，方便其他元件使用
 export const useAuth = () => {
   return useContext(AuthContext);
 };
