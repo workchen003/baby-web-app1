@@ -1,20 +1,19 @@
-// src/app/onboarding/create-family/page.tsx (更新後)
+// src/app/onboarding/create-family/page.tsx
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createFamily } from '@/lib/family';
 import Link from 'next/link';
 
 export default function CreateFamilyPage() {
-  // 【修改】從 Context 中多取得 userProfile 和 refetchUserProfile
   const { user, userProfile, refetchUserProfile, loading } = useAuth();
   const router = useRouter();
 
   const [familyName, setFamilyName] = useState('');
-  const [role, setRole] = useState('爸爸'); // 【新增】角色 state
+  const [role, setRole] = useState('爸爸');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -33,9 +32,7 @@ export default function CreateFamilyPage() {
     setError('');
 
     try {
-      // 【修改】傳入角色參數
       await createFamily(user, familyName, role);
-      // 【修改】在跳轉前，先刷新使用者狀態
       await refetchUserProfile();
       router.push('/');
     } catch (err) {
@@ -45,7 +42,6 @@ export default function CreateFamilyPage() {
     }
   };
 
-  // 【新增】防止已在家庭中的使用者重複建立
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">載入中...</div>;
   }
@@ -79,7 +75,6 @@ export default function CreateFamilyPage() {
             />
           </div>
           
-          {/* 【新增】角色選擇下拉選單 */}
           <div>
             <label htmlFor="role" className="block text-sm font-medium text-gray-700">您在家庭中的角色</label>
             <select

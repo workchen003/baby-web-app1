@@ -1,10 +1,9 @@
-// src/lib/family.ts (更新後)
+// src/lib/family.ts
 
 import { db } from './firebase';
 import {
   collection,
   doc,
-  updateDoc,
   arrayUnion,
   writeBatch,
 } from 'firebase/firestore';
@@ -19,7 +18,7 @@ import { User } from 'firebase/auth';
 export const createFamily = async (
   user: User,
   familyName: string,
-  role: string // 【新增】接收角色參數
+  role: string
 ) => {
   const batch = writeBatch(db);
 
@@ -27,7 +26,7 @@ export const createFamily = async (
   batch.set(familyRef, {
     familyName: familyName,
     creatorID: user.uid,
-    members: [{ uid: user.uid, role: role }], // 【修改】使用傳入的角色
+    members: [{ uid: user.uid, role: role }],
     babyIDs: [],
   });
 

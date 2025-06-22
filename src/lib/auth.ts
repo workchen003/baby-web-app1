@@ -1,7 +1,6 @@
-// src/lib/auth.ts (修正後)
+// src/lib/auth.ts
 
 import {
-  Auth,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
@@ -39,7 +38,6 @@ export const signOutUser = async () => {
  * [後端預留] 使用 Email 和密碼註冊
  * 注意：此功能根據專案計畫書，初期不在 UI 上提供入口
  */
-// 修正：為 email 和 password 加上 string 型別
 export const signUpWithEmail = async (email: string, password: string) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -54,7 +52,6 @@ export const signUpWithEmail = async (email: string, password: string) => {
  * [後端預留] 使用 Email 和密碼登入
  * 注意：此功能根據專案計畫書，初期不在 UI 上提供入口
  */
-// 修正：為 email 和 password 加上 string 型別
 export const signInWithEmail = async (email: string, password: string) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
