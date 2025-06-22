@@ -1,6 +1,10 @@
+// src/app/layout.tsx
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+// 引入我們剛才建立的 AuthProvider
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +31,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        {/* 將整個應用程式包裹起來 */}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

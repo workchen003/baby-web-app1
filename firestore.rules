@@ -1,0 +1,19 @@
+// firestore.rules
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 規定：使用者只能讀取或寫入自己的 user document
+    // 這對應到計畫書中的安全性設計原則
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // 為了安全起見，在明確定義規則前，預設拒絕所有其他集合的存取
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
