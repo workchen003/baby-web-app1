@@ -1,3 +1,5 @@
+// src/app/dashboard/page.tsx
+
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +16,8 @@ export default function DashboardPage() {
 
   const [latestRecords, setLatestRecords] = useState<DocumentData[]>([]);
   const [isRecordsLoading, setRecordsLoading] = useState(true);
+  // 【新增】建立一個 state 來存放錯誤訊息
+  const [recordsError, setRecordsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -21,7 +25,6 @@ export default function DashboardPage() {
       router.replace('/');
       return;
     }
-    // 修正 TypeScript 錯誤：在存取 familyIDs 前先進行存在性檢查
     if (userProfile) {
       if (!userProfile.familyIDs || userProfile.familyIDs.length === 0) {
         router.replace('/onboarding/create-family');
@@ -37,21 +40,31 @@ export default function DashboardPage() {
         limit(5)
       );
 
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const records: DocumentData[] = [];
-        querySnapshot.forEach((doc) => {
-          records.push({ id: doc.id, ...doc.data() });
-        });
-        setLatestRecords(records);
-        setRecordsLoading(false);
-      });
+      // 【修改】在 onSnapshot 中加入錯誤處理的回呼函式
+      const unsubscribe = onSnapshot(q, 
+        (querySnapshot) => {
+          // 成功時的邏輯
+          const records: DocumentData[] = [];
+          querySnapshot.forEach((doc) => {
+            records.push({ id: doc.id, ...doc.data() });
+          });
+          setLatestRecords(records);
+          setRecordsLoading(false);
+          setRecordsError(null); // 成功時清除舊的錯誤訊息
+        }, 
+        (error) => {
+          // 【使用】失敗時，更新錯誤狀態
+          console.error("Firestore snapshot error:", error);
+          setRecordsError("無法載入紀錄，請稍後再試。");
+          setRecordsLoading(false);
+        }
+      );
 
       return () => unsubscribe();
     }
   }, [user, userProfile, loading, router]);
 
   const handleAddTestRecord = async () => {
-    // 修正 TypeScript 錯誤：確保 userProfile 和 familyIDs 存在
     if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0 && user) {
       try {
         await addRecord(userProfile.familyIDs[0], user.uid);
@@ -64,7 +77,6 @@ export default function DashboardPage() {
     }
   };
   
-  // 修正 TypeScript 錯誤：在判斷式中加入對 familyIDs 的完整檢查
   if (loading || !userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0) {
     return <div className="flex min-h-screen items-center justify-center">載入中或正在重新導向...</div>;
   }
@@ -101,6 +113,8 @@ export default function DashboardPage() {
           <div className="bg-white rounded-lg shadow p-4 space-y-3">
             {isRecordsLoading ? (
               <p>正在載入記錄...</p>
+            ) : recordsError ? ( // 【使用】當有錯誤時，顯示錯誤訊息
+              <p className="text-center text-red-500 py-4">{recordsError}</p>
             ) : latestRecords.length > 0 ? (
               latestRecords.map((record) => (
                 <div key={record.id} className="p-2 border-b last:border-b-0">
