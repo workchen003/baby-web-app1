@@ -52,7 +52,7 @@ const HomePageStyles = () => (
   `}</style>
 );
 
-// 懸浮按鈕元件 (還原 demo 中的所有子按鈕)
+// 懸浮按鈕元件 (包含所有子按鈕)
 const FloatingActionButton = () => {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -81,7 +81,7 @@ const AppHeader = () => {
         <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm shadow-sm flex-shrink-0">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <Link href="/" className="flex items-center">
-                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={48} priority />
+                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={40} priority />
                 </Link>
                 <div className="flex items-center gap-4 md:gap-6">
                     <nav className="hidden items-center gap-6 md:flex">
@@ -103,7 +103,19 @@ const AppHeader = () => {
                             </div>
                         )}
                     </div>
-                    {user ? (<Link href="/dashboard"><span className="sr-only">個人檔案</span><div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden"><Image src={user.photoURL || ''} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" /></div></Link>) : (<button onClick={signInWithGoogle} title="登入"><div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg></div></button>)}
+                    {user ? (
+                        <Link href="/dashboard">
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                {user.photoURL && <Image src={user.photoURL} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" />}
+                            </div>
+                        </Link>
+                    ) : (
+                        <button onClick={signInWithGoogle} title="登入">
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                            </div>
+                        </button>
+                    )}
                 </div>
             </div>
         </header>
@@ -114,7 +126,13 @@ const AppHeader = () => {
 const MainContent = () => {
     const { user, loading } = useAuth();
     const router = useRouter();
-    const handleCreateAccountClick = () => { if (user) { router.push('/dashboard'); } else { signInWithGoogle(); } };
+    const handleCreateAccountClick = () => {
+        if (user) {
+          router.push('/dashboard');
+        } else {
+          signInWithGoogle();
+        }
+    };
     return (
         <main className="container mx-auto flex flex-grow flex-col items-center justify-center px-6 py-12 text-center">
             <div className="mb-12 md:mb-16"><h1 className="text-5xl font-bold tracking-tight text-gray-900 md:text-6xl">智慧育兒，輕鬆上手</h1><p className="mt-4 text-lg text-gray-600 md:text-xl">與你一同，紀錄寶寶的每個成長瞬間。</p></div>
