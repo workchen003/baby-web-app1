@@ -1,5 +1,3 @@
-// src/lib/auth.ts
-
 import {
   GoogleAuthProvider,
   signInWithPopup,
@@ -9,17 +7,29 @@ import {
 } from "firebase/auth";
 import { auth } from "./firebase";
 
+// 用於防止 popup 被重複呼叫
+let isSigningIn = false;
+
 /**
- * 透過 Google 彈出視窗登入
+ * 透過 Google 彈出視窗登入（防止重複登入錯誤）
  */
 export const signInWithGoogle = async () => {
+  if (isSigningIn) return null;
+  isSigningIn = true;
+
   const provider = new GoogleAuthProvider();
+
   try {
     const result = await signInWithPopup(auth, provider);
     return result.user;
-  } catch (error) {
-    console.error("Error during Google sign-in:", error);
+  } catch (error: any) {
+    // 忽略使用者快速點擊造成的錯誤
+    if (error.code !== "auth/cancelled-popup-request") {
+      console.error("Error during Google sign-in:", error);
+    }
     return null;
+  } finally {
+    isSigningIn = false;
   }
 };
 
