@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx (更新後)
+// src/contexts/AuthContext.tsx (最終修正版 - 新增錯誤處理)
 
 'use client';
 
@@ -18,14 +18,14 @@ interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
-  refetchUserProfile: () => Promise<void>; // 【新增】定義刷新函式
+  refetchUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   userProfile: null,
   loading: true,
-  refetchUserProfile: async () => {}, // 初始空函式
+  refetchUserProfile: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -52,31 +52,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // 【新增】一個可從外部呼叫的刷新函式
   const refetchUserProfile = useCallback(async () => {
     if (user) {
-      const profile = await syncUserData(user);
-      setUserProfile(profile);
+      try {
+        const profile = await syncUserData(user);
+        setUserProfile(profile);
+      } catch (error) {
+        console.error("Error refetching user profile:", error);
+      }
     }
   }, [user, syncUserData]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const profile = await syncUserData(user);
-        setUser(user);
-        setUserProfile(profile);
-      } else {
+      // **關鍵修改：使用 try...catch...finally 包裹非同步操作**
+      try {
+        if (user) {
+          const profile = await syncUserData(user);
+          setUser(user);
+          setUserProfile(profile);
+        } else {
+          setUser(null);
+          setUserProfile(null);
+        }
+      } catch (error) {
+        console.error("Error during auth state change:", error);
+        // 發生錯誤時，將使用者狀態重置，避免不一致
         setUser(null);
         setUserProfile(null);
+      } finally {
+        // 無論成功或失敗，最終都將 loading 狀態設為 false
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
   }, [syncUserData]);
 
-  const value = { user, userProfile, loading, refetchUserProfile }; // 【新增】將函式提供出去
+  const value = { user, userProfile, loading, refetchUserProfile };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
