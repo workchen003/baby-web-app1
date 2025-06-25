@@ -8,24 +8,31 @@ import {
   signInWithEmailAndPassword,
 } from "firebase/auth";
 import { auth } from "./firebase";
+// 【新增】從 firebase/app 匯入 FirebaseError 型別
+import { FirebaseError } from "firebase/app";
 
-/**
- * 透過 Google 彈出視窗登入
- */
+let isSigningIn = false;
+
 export const signInWithGoogle = async () => {
+  if (isSigningIn) return null;
+  isSigningIn = true;
+
   const provider = new GoogleAuthProvider();
+
   try {
     const result = await signInWithPopup(auth, provider);
     return result.user;
-  } catch (error) {
-    console.error("Error during Google sign-in:", error);
+  } catch (error: unknown) { // 【修改】將 error 的型別從 any 改為 unknown
+    // 【修改】使用型別檢查來安全地存取 error 的屬性
+    if (error instanceof FirebaseError && error.code !== "auth/cancelled-popup-request") {
+      console.error("Error during Google sign-in:", error);
+    }
     return null;
+  } finally {
+    isSigningIn = false;
   }
 };
 
-/**
- * 登出
- */
 export const signOutUser = async () => {
   try {
     await signOut(auth);
@@ -34,10 +41,6 @@ export const signOutUser = async () => {
   }
 };
 
-/**
- * [後端預留] 使用 Email 和密碼註冊
- * 注意：此功能根據專案計畫書，初期不在 UI 上提供入口
- */
 export const signUpWithEmail = async (email: string, password: string) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -48,10 +51,6 @@ export const signUpWithEmail = async (email: string, password: string) => {
   }
 };
 
-/**
- * [後端預留] 使用 Email 和密碼登入
- * 注意：此功能根據專案計畫書，初期不在 UI 上提供入口
- */
 export const signInWithEmail = async (email: string, password: string) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);

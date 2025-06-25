@@ -1,5 +1,3 @@
-// src/app/page.tsx (正確的最終版本)
-
 'use client';
 
 import { useState } from 'react';
@@ -34,6 +32,8 @@ const HomePageStyles = () => (
         opacity: 1;
         transform: translateY(0);
     }
+    .floating-button-group.open .sub-button:nth-child(1) { transition-delay: 0.05s; }
+    .floating-button-group.open .sub-button:nth-child(2) { transition-delay: 0.1s; }
     .icon-link {
         display: inline-flex;
         flex-direction: column;
@@ -52,12 +52,17 @@ const HomePageStyles = () => (
   `}</style>
 );
 
-// 懸浮按鈕元件
+// 懸浮按鈕元件 (包含所有子按鈕)
 const FloatingActionButton = () => {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className={`floating-button-group ${isOpen ? 'open' : ''}`}>
-      {/* 子按鈕可根據未來需求添加 */}
+      <a href="#" className="sub-button flex items-center justify-center w-12 h-12 rounded-full bg-blue-500 text-white shadow-lg hover:bg-blue-600" title="聯絡客服">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.106l-1.412-.369a1.125 1.125 0 0 1-.924-.735l-.718-2.153a1.125 1.125 0 0 0-1.077-.757H9.58c-.483 0-.952.174-1.316.483l-2.91 2.55c-1.564 1.401-2.98 1.15-3.44-.063V6.75Z" /></svg>
+      </a>
+      <a href="#" className="sub-button flex items-center justify-center w-12 h-12 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600" title="寶寶資訊快捷">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25H21M7.5 12h-.75m0 0-2.25 2.25M3 12h.75L6 14.25m-2.25 2.25 2.25-2.25m0 0h3.819l-2.404 5.332M7.5 12l-.75 1.5m7.5-3-.935 2.336c-.247.621-.58 1.242-.997 1.838-.418.597-.93 1.124-1.503 1.588" /></svg>
+      </a>
       <button onClick={() => setIsOpen(!isOpen)} className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 text-white shadow-xl hover:bg-blue-700 transition-all duration-300 ease-in-out">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`w-8 h-8 transition-transform duration-300 ${isOpen ? 'hidden' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className={`w-8 h-8 transition-transform duration-300 ${!isOpen ? 'hidden' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
@@ -76,7 +81,7 @@ const AppHeader = () => {
         <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm shadow-sm flex-shrink-0">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <Link href="/" className="flex items-center">
-                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={48} priority />
+                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={40} priority />
                 </Link>
                 <div className="flex items-center gap-4 md:gap-6">
                     <nav className="hidden items-center gap-6 md:flex">
@@ -98,7 +103,19 @@ const AppHeader = () => {
                             </div>
                         )}
                     </div>
-                    {user ? (<Link href="/dashboard"><span className="sr-only">個人檔案</span><div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden"><Image src={user.photoURL || ''} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" /></div></Link>) : (<button onClick={signInWithGoogle} title="登入"><div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg></div></button>)}
+                    {user ? (
+                        <Link href="/dashboard">
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                {user.photoURL && <Image src={user.photoURL} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" />}
+                            </div>
+                        </Link>
+                    ) : (
+                        <button onClick={signInWithGoogle} title="登入">
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                            </div>
+                        </button>
+                    )}
                 </div>
             </div>
         </header>
@@ -109,20 +126,16 @@ const AppHeader = () => {
 const MainContent = () => {
     const { user, loading } = useAuth();
     const router = useRouter();
-const handleCreateAccountClick = () => {
-    if (user) {
-      router.push('/dashboard');
-    } else {
-      signInWithGoogle();
-    }
-};
-
+    const handleCreateAccountClick = () => {
+        if (user) {
+          router.push('/dashboard');
+        } else {
+          signInWithGoogle();
+        }
+    };
     return (
         <main className="container mx-auto flex flex-grow flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="mb-12 md:mb-16">
-                <h1 className="text-5xl font-bold tracking-tight text-gray-900 md:text-6xl">智慧育兒，輕鬆上手</h1>
-                <p className="mt-4 text-lg text-gray-600 md:text-xl">與你一同，紀錄寶寶的每個成長瞬間。</p>
-            </div>
+            <div className="mb-12 md:mb-16"><h1 className="text-5xl font-bold tracking-tight text-gray-900 md:text-6xl">智慧育兒，輕鬆上手</h1><p className="mt-4 text-lg text-gray-600 md:text-xl">與你一同，紀錄寶寶的每個成長瞬間。</p></div>
             <div className="grid w-full max-w-5xl grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
                 <div className="flex flex-col items-center"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-8 w-8"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg></div><h3 className="mt-4 text-xl font-semibold">全方位輕鬆紀錄</h3><p className="mt-2 text-gray-500">從餵奶、換尿布到副食品，所有日常瑣事，一鍵搞定。</p></div>
                 <div className="flex flex-col items-center"><div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-100 text-purple-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-8 w-8"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg></div><h3 className="mt-4 text-xl font-semibold">視覺化智慧分析</h3><p className="mt-2 text-gray-500">自動生成生長曲線與發展里程碑，輕鬆掌握寶寶成長軌跡。</p></div>
