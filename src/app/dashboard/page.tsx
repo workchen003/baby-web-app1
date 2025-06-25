@@ -71,7 +71,9 @@ export default function DashboardPage() {
         await addRecord(userProfile.familyIDs[0], user.uid);
         alert('測試記錄已新增！');
       } catch (error) {
-        alert('新增失敗！');
+        // 在 console 中印出詳細錯誤，這樣 'error' 變數就被使用了
+        console.error("新增測試記錄失敗:", error);
+        alert('新增失敗！請查看 console 以了解詳細資訊。');
       }
     }
   };
