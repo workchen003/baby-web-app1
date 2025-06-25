@@ -8,7 +8,8 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp, 
-  DocumentData 
+  DocumentData,
+  Timestamp // 1. 從 'firebase/firestore' 匯入 Timestamp 型別
 } from 'firebase/firestore';
 import { UserProfile } from '@/contexts/AuthContext';
 
@@ -19,15 +20,15 @@ export interface RecordData extends DocumentData {
   creatorId: string;
   creatorName: string | null;
   type: 'feeding' | 'diaper' | 'sleep';
-  timestamp: any; // 儲存時使用 serverTimestamp
+  timestamp: Timestamp; // 2. 將 any 修改為 Timestamp
   notes?: string;
   
   // 針對不同類型的可選欄位
   amount?: number;
   method?: 'bottle' | 'breastfeeding';
   diaperType?: ('wet' | 'dirty')[];
-  startTime?: any;
-  endTime?: any;
+  startTime?: Timestamp; // 3. 將 any 修改為 Timestamp
+  endTime?: Timestamp;   // 4. 將 any 修改為 Timestamp
 }
 
 /**
