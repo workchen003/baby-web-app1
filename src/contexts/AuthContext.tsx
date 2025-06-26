@@ -1,5 +1,3 @@
-// src/contexts/AuthContext.tsx (最終修正版 - 新增錯誤處理)
-
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
@@ -65,7 +63,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // **關鍵修改：使用 try...catch...finally 包裹非同步操作**
+      // 使用 try...catch...finally 包裹所有非同步操作，以處理 AbortError
       try {
         if (user) {
           const profile = await syncUserData(user);

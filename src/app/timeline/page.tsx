@@ -47,9 +47,15 @@ export default function DashboardPage() {
         },
         (error) => {
           console.error("Dashboard snapshot error:", error);
-          if (error.code !== 'cancelled') {
-            setFirestoreError("無法載入記錄。");
+          // 檢查錯誤名稱是否為 AbortError，或 code 是否為 cancelled
+          // 如果是，代表這是預期中的取消行為，直接返回即可
+          if (error.name === 'AbortError' || error.code === 'cancelled') {
+            console.log("Snapshot listener was cancelled. This is expected.");
+            return;
           }
+          
+          // 如果是其他真實的錯誤，才設定錯誤訊息
+          setFirestoreError("無法載入記錄。");
           setRecordsLoading(false);
         }
       );
