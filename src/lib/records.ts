@@ -9,7 +9,7 @@ import {
   deleteDoc,
   serverTimestamp, 
   DocumentData,
-  Timestamp // 1. 從 'firebase/firestore' 匯入 Timestamp 型別
+  Timestamp
 } from 'firebase/firestore';
 import { UserProfile } from '@/contexts/AuthContext';
 
@@ -19,16 +19,20 @@ export interface RecordData extends DocumentData {
   babyId: string;
   creatorId: string;
   creatorName: string | null;
-  type: 'feeding' | 'diaper' | 'sleep';
-  timestamp: Timestamp; // 2. 將 any 修改為 Timestamp
+  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food'; // --- 修改：新增 'solid-food' ---
+  timestamp: Timestamp;
   notes?: string;
   
   // 針對不同類型的可選欄位
   amount?: number;
   method?: 'bottle' | 'breastfeeding';
   diaperType?: ('wet' | 'dirty')[];
-  startTime?: Timestamp; // 3. 將 any 修改為 Timestamp
-  endTime?: Timestamp;   // 4. 將 any 修改為 Timestamp
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+
+  // --- 新增：針對副食品的欄位 ---
+  foodItems?: string; // 吃了什麼，用文字記錄
+  reaction?: 'good' | 'neutral' | 'bad'; // 寶寶反應
 }
 
 /**

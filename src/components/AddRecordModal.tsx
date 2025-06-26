@@ -5,9 +5,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { addRecord, updateRecord, deleteRecord, RecordData } from '@/lib/records';
 import { DocumentData } from 'firebase/firestore';
 
-// Props 新增 existingRecord，用於傳入要編輯的資料
+// --- 修改：在 RecordType 裡加上 'solid-food' ---
+type RecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food';
+
 interface AddRecordModalProps {
-  recordType: 'feeding' | 'diaper' | 'sleep';
+  recordType: RecordType;
   onClose: () => void;
   existingRecord?: DocumentData | null;
 }
@@ -20,13 +22,19 @@ export default function AddRecordModal({ recordType, onClose, existingRecord }: 
   // 表單欄位的 state
   const [notes, setNotes] = useState('');
   const [amount, setAmount] = useState('');
+  // --- 新增：副食品的 state ---
+  const [foodItems, setFoodItems] = useState('');
+  const [reaction, setReaction] = useState<'good' | 'neutral' | 'bad'>('good');
+
 
   // Effect hook: 如果有傳入 existingRecord，就用它的資料預填表單
   useEffect(() => {
     if (existingRecord) {
       setNotes(existingRecord.notes || '');
       setAmount(existingRecord.amount || '');
-      // 未來可在此處加入其他欄位的預填邏輯
+      // --- 新增：預填副食品資料 ---
+      setFoodItems(existingRecord.foodItems || '');
+      setReaction(existingRecord.reaction || 'good');
     }
   }, [existingRecord]);
 
@@ -54,7 +62,14 @@ export default function AddRecordModal({ recordType, onClose, existingRecord }: 
     try {
       if (existingRecord) {
         // --- 編輯模式 ---
-        const updatedData: Partial<RecordData> = { notes, amount: Number(amount) };
+        let updatedData: Partial<RecordData> = { notes };
+        if (recordType === 'feeding') {
+          updatedData = { ...updatedData, amount: Number(amount) };
+        }
+        // --- 新增：處理副食品編輯 ---
+        if (recordType === 'solid-food') {
+          updatedData = { ...updatedData, foodItems, reaction };
+        }
         await updateRecord(existingRecord.id, updatedData);
       } else {
         // --- 新增模式 ---
@@ -64,9 +79,15 @@ export default function AddRecordModal({ recordType, onClose, existingRecord }: 
           type: recordType,
           notes,
         };
-        let recordData = { ...baseData };
+
+        let recordData: Partial<RecordData> = { ...baseData };
+
         if (recordType === 'feeding') {
           recordData = { ...recordData, amount: Number(amount) };
+        }
+        // --- 新增：處理副食品新增 ---
+        if (recordType === 'solid-food') {
+          recordData = { ...recordData, foodItems, reaction };
         }
         await addRecord(recordData, userProfile);
       }
@@ -85,6 +106,7 @@ export default function AddRecordModal({ recordType, onClose, existingRecord }: 
       case 'feeding': return `${action}餵奶記錄`;
       case 'diaper': return `${action}換尿布記錄`;
       case 'sleep': return `${action}睡眠記錄`;
+      case 'solid-food': return `${action}副食品記錄`; // --- 新增 ---
       default: return `${action}記錄`;
     }
   };
@@ -100,11 +122,41 @@ export default function AddRecordModal({ recordType, onClose, existingRecord }: 
               <input type="number" id="amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required />
             </div>
           )}
+
+          {/* --- 新增：副食品輸入欄位 --- */}
+          {recordType === 'solid-food' && (
+            <>
+              <div className="mb-4">
+                <label htmlFor="foodItems" className="block text-sm font-medium text-gray-700">食物內容</label>
+                <input type="text" id="foodItems" value={foodItems} onChange={(e) => setFoodItems(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：蘋果泥、十倍粥" required />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">寶寶反應</label>
+                <div className="mt-2 flex gap-4">
+                    <label className="inline-flex items-center">
+                        <input type="radio" className="form-radio" name="reaction" value="good" checked={reaction === 'good'} onChange={() => setReaction('good')} />
+                        <span className="ml-2">良好</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                        <input type="radio" className="form-radio" name="reaction" value="neutral" checked={reaction === 'neutral'} onChange={() => setReaction('neutral')} />
+                        <span className="ml-2">普通</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                        <input type="radio" className="form-radio" name="reaction" value="bad" checked={reaction === 'bad'} onChange={() => setReaction('bad')} />
+                        <span className="ml-2">不佳/過敏</span>
+                    </label>
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="mb-4">
             <label htmlFor="notes" className="block text-sm font-medium text-gray-700">備註 (可選)</label>
             <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" />
           </div>
+
           {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+
           <div className="flex justify-between items-center">
             <div>
               {existingRecord && (
