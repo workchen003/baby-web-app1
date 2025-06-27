@@ -10,9 +10,8 @@ import { collection, query, where, orderBy, limit, onSnapshot, DocumentData } fr
 import AddRecordModal from '@/components/AddRecordModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
 
-// --- 核心修正：定義一個「可手動建立」的紀錄類型，並排除 'bmi' ---
+// 定義可以手動建立的紀錄類型
 type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
-
 
 export default function DashboardPage() {
   const { user, userProfile, loading } = useAuth();
@@ -23,12 +22,10 @@ export default function DashboardPage() {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // --- 核心修正：讓 modalRecordType 的狀態使用我們新定義的 CreatableRecordType ---
   const [modalRecordType, setModalRecordType] = useState<CreatableRecordType>('feeding');
 
   useEffect(() => {
     let isMounted = true; 
-
     if (loading) return;
     if (!user) {
       router.replace('/');
@@ -37,7 +34,6 @@ export default function DashboardPage() {
     if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const currentFamilyId = userProfile.familyIDs[0];
       const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"), limit(5));
-      
       const unsubscribe = onSnapshot(q, 
         (querySnapshot) => {
           if (isMounted) {
@@ -58,15 +54,10 @@ export default function DashboardPage() {
           }
         }
       );
-      
-      return () => {
-        isMounted = false;
-        unsubscribe();
-      };
+      return () => { isMounted = false; unsubscribe(); };
     }
   }, [user, userProfile, loading, router]);
 
-  // --- 核心修正：handleOpenModal 的參數型別也更新 ---
   const handleOpenModal = (type: CreatableRecordType) => {
     setModalRecordType(type);
     setIsModalOpen(true);
@@ -110,9 +101,13 @@ export default function DashboardPage() {
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{userProfile.displayName}的儀表板</h1>
+            {/* --- 前往各功能頁面的連結 --- */}
             <div className="flex items-center gap-4">
               <Link href="/growth" className="text-sm font-medium text-blue-600 hover:underline">
                 生長曲線
+              </Link>
+              <Link href="/milestones" className="text-sm font-medium text-blue-600 hover:underline">
+                發展里程碑
               </Link>
               <Link href="/baby/edit" className="text-sm font-medium text-blue-600 hover:underline">
                 寶寶資料
