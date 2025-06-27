@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import type { RecordData } from '@/lib/records';
+
+// --- 核心修正：直接在此處定義元件只會用到的、可手動建立的紀錄類型 ---
+type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
 
 // 定義元件的 Props 型別
-// onAddRecord 是一個函式，它會接收一個記錄類型作為參數
 interface FloatingActionButtonProps {
-  onAddRecord: (type: RecordData['type']) => void;
+  onAddRecord: (type: CreatableRecordType) => void;
 }
 
 export default function FloatingActionButton({ onAddRecord }: FloatingActionButtonProps) {
@@ -14,7 +15,7 @@ export default function FloatingActionButton({ onAddRecord }: FloatingActionButt
 
   // 當點擊子按鈕時，呼叫從父元件傳入的 onAddRecord 函式
   // 並自動收合選單
-  const handleSubButtonClick = (type: RecordData['type']) => {
+  const handleSubButtonClick = (type: CreatableRecordType) => {
     onAddRecord(type);
     setIsOpen(false);
   };

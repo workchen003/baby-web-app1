@@ -4,25 +4,30 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { signOutUser } from '@/lib/auth';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
 import AddRecordModal from '@/components/AddRecordModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
-import { RecordData } from '@/lib/records';
 
-type RecordType = RecordData['type'];
+// --- 核心修正：定義一個「可手動建立」的紀錄類型，並排除 'bmi' ---
+type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
 
-export default function DashboardPage() {
+
+// --- 核心修正：元件名稱改為 TimelinePage ---
+export default function TimelinePage() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
-  const [latestRecords, setLatestRecords] = useState<DocumentData[]>([]);
+  // --- 核心修正：變數名稱更符合語意 ---
+  const [allRecords, setAllRecords] = useState<DocumentData[]>([]);
   const [isRecordsLoading, setRecordsLoading] = useState(true);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalRecordType, setModalRecordType] = useState<RecordType>('feeding');
+  const [modalRecordType, setModalRecordType] = useState<CreatableRecordType>('feeding');
+
+  // 編輯模式用的 State
+  const [editingRecord, setEditingRecord] = useState<DocumentData | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -37,25 +42,21 @@ export default function DashboardPage() {
       }
       
       const currentFamilyId = userProfile.familyIDs[0];
-      const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"), limit(5));
+      // --- 核心修正：移除 limit(5)，以讀取所有紀錄 ---
+      const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"));
+      
       const unsubscribe = onSnapshot(q, 
         (querySnapshot) => {
           const records = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setLatestRecords(records);
+          setAllRecords(records);
           setFirestoreError(null);
           setRecordsLoading(false);
         },
         (error) => {
-          console.error("Dashboard snapshot error:", error);
-          // 檢查錯誤名稱是否為 AbortError，或 code 是否為 cancelled
-          // 如果是，代表這是預期中的取消行為，直接返回即可
-          if (error.name === 'AbortError' || error.code === 'cancelled') {
-            console.log("Snapshot listener was cancelled. This is expected.");
-            return;
+          console.error("Timeline snapshot error:", error);
+          if (error.code !== 'cancelled') {
+            setFirestoreError("無法載入記錄。");
           }
-          
-          // 如果是其他真實的錯誤，才設定錯誤訊息
-          setFirestoreError("無法載入記錄。");
           setRecordsLoading(false);
         }
       );
@@ -63,13 +64,47 @@ export default function DashboardPage() {
     }
   }, [user, userProfile, loading, router]);
 
-  const handleOpenModal = (type: RecordType) => {
+  const handleOpenModal = (type: CreatableRecordType, record: DocumentData | null = null) => {
     setModalRecordType(type);
+    setEditingRecord(record);
     setIsModalOpen(true);
   };
   
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingRecord(null);
+  }
+
   if (loading || !userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0) {
     return <div className="flex min-h-screen items-center justify-center">載入中或正在重新導向...</div>;
+  }
+
+  const getRecordTitle = (record: DocumentData) => {
+    switch(record.type) {
+      case 'feeding': return '餵奶';
+      case 'diaper': return '換尿布';
+      case 'sleep': return '睡眠';
+      case 'solid-food': return '副食品';
+      case 'bmi': return 'BMI';
+      case 'measurement':
+        switch(record.measurementType) {
+          case 'height': return '身高';
+          case 'weight': return '體重';
+          case 'headCircumference': return '頭圍';
+          default: return '生長記錄';
+        }
+      default: return '紀錄';
+    }
+  }
+
+  const getUnit = (record: DocumentData) => {
+    if (record.type === 'measurement') {
+        return record.measurementType === 'weight' ? 'kg' : 'cm';
+    }
+    if (record.type === 'feeding') {
+        return 'ml';
+    }
+    return '';
   }
 
   return (
@@ -77,45 +112,46 @@ export default function DashboardPage() {
       <div className="flex min-h-screen flex-col w-full bg-gray-50">
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{userProfile.displayName}的儀表板</h1>
-            <button onClick={signOutUser} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">登出</button>
+            {/* --- 核心修正：標題更新 --- */}
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">完整時間軸</h1>
+            <Link href="/dashboard" className="text-sm font-medium text-blue-600 hover:underline">&larr; 返回儀表板</Link>
           </div>
         </header>
         
-        <main className="w-full container mx-auto flex-grow py-8 px-4 sm:px-6 lg:px-8 space-y-8">
-          <section>
-            <h2 className="text-xl font-semibold mb-4">快速新增</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <button onClick={() => handleOpenModal('feeding')} className="p-4 bg-white rounded-lg shadow text-center hover:bg-gray-100 transition">餵奶</button>
-              <button onClick={() => handleOpenModal('diaper')} className="p-4 bg-white rounded-lg shadow text-center hover:bg-gray-100 transition">換尿布</button>
-              <button onClick={() => handleOpenModal('sleep')} className="p-4 bg-white rounded-lg shadow text-center hover:bg-gray-100 transition">睡眠</button>
-              <button className="p-4 bg-gray-200 rounded-lg shadow text-center text-gray-500 cursor-not-allowed" disabled>其他</button>
-            </div>
-          </section>
-
-          <section>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">近期時間軸</h2>
-              <Link href="/timeline" className="text-sm font-medium text-blue-600 hover:underline">查看全部 &rarr;</Link>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 space-y-3 min-h-[120px]">
-              {isRecordsLoading ? <p>正在載入記錄...</p> : firestoreError ? <p className="text-red-500">{firestoreError}</p> : latestRecords.length > 0 ? (
-                latestRecords.map((record) => (
-                  <div key={record.id} className="p-3 border-b last:border-b-0">
-                    <p className="font-semibold">類型: {record.type}</p>
-                    {record.notes && <p className="text-gray-600">備註: {record.notes}</p>}
+        <main className="w-full container mx-auto flex-grow py-8 px-4 sm:px-6 lg:px-8">
+          <div className="bg-white rounded-lg shadow p-4 space-y-3">
+            {isRecordsLoading ? <p>正在載入記錄...</p> : firestoreError ? <p className="text-red-500">{firestoreError}</p> : allRecords.length > 0 ? (
+              allRecords.map((record) => (
+                <div key={record.id} className="p-4 border-b last:border-b-0 flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-lg">{getRecordTitle(record)}</p>
+                    {record.type === 'solid-food' && record.foodItems && (<p className="text-gray-600">內容: {record.foodItems}</p>)}
+                    {record.type === 'feeding' && record.amount && (<p className="text-gray-600">奶量: {record.amount} ml</p>)}
+                    {(record.type === 'measurement' || record.type === 'bmi') && record.value && (<p className="text-gray-600">數值: {record.value} {getUnit(record)}</p>)}
+                    {record.notes && <p className="text-gray-600 mt-1">備註: {record.notes}</p>}
+                    <p className="text-xs text-gray-500 mt-2">記錄者: {record.creatorName || 'N/A'}</p>
                     <p className="text-xs text-gray-500 mt-1">時間: {record.timestamp?.toDate().toLocaleString('zh-TW') || 'N/A'}</p>
                   </div>
-                ))
-              ) : <p className="text-center text-gray-500 py-4">目前沒有任何記錄。</p>}
-            </div>
-          </section>
+                  <div>
+                    <button 
+                      onClick={() => handleOpenModal(record.type, record)}
+                      className="text-sm text-blue-600 hover:underline"
+                      // BMI 是自動計算的，不應該能被編輯
+                      disabled={record.type === 'bmi'}
+                    >
+                      編輯
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : <p className="text-center text-gray-500 py-8">目前沒有任何記錄。</p>}
+          </div>
         </main>
       </div>
 
-      <FloatingActionButton onAddRecord={handleOpenModal} />
+      <FloatingActionButton onAddRecord={(type) => handleOpenModal(type)} />
 
-      {isModalOpen && <AddRecordModal recordType={modalRecordType} onClose={() => setIsModalOpen(false)} />}
+      {isModalOpen && <AddRecordModal recordType={modalRecordType} onClose={handleCloseModal} existingRecord={editingRecord} />}
     </>
   );
 }
