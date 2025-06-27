@@ -23,7 +23,6 @@ interface GrowthChartProps {
   records: DocumentData[];
 }
 
-// --- 新增：為圖表數據點定義一個清晰的 interface ---
 interface ChartPoint {
     age: number;
     '3rd'?: number;
@@ -77,7 +76,7 @@ export default function GrowthChart({ metric, babyProfile, records }: GrowthChar
       })
       .map(r => {
         const measurementDate = r.timestamp.toDate();
-        const ageInMonths = (measurementDate.getTime() - birthDate.getTime()) / (1000 * 60 * 60 * 24 * 30.4375);
+        const ageInMonths = (measurementDate.getTime() - new Date(birthDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375);
         return {
           age: ageInMonths,
           '您的寶寶': r.value,
@@ -124,8 +123,8 @@ export default function GrowthChart({ metric, babyProfile, records }: GrowthChar
             allowDataOverflow={true}
         />
         <Tooltip
-            formatter={(value, name) => [`${(value as number).toFixed(1)}`, name]}
-            labelFormatter={(label) => `年齡: ${label.toFixed(1)} 個月`}
+            formatter={(value: number, name: string) => [`${value.toFixed(1)} ${details.unit}`, name]}
+            labelFormatter={(label: number) => `年齡: ${label.toFixed(1)} 個月`}
         />
         <Legend />
         <Line connectNulls type="monotone" dataKey="3rd" stroke="#d946ef" strokeWidth={2} dot={false} name="3 百分位" />
