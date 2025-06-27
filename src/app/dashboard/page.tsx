@@ -13,6 +13,7 @@ import FloatingActionButton from '@/components/FloatingActionButton';
 // 定義可以手動建立的紀錄類型
 type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
 
+
 export default function DashboardPage() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let isMounted = true; 
+
     if (loading) return;
     if (!user) {
       router.replace('/');
@@ -34,6 +36,7 @@ export default function DashboardPage() {
     if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const currentFamilyId = userProfile.familyIDs[0];
       const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"), limit(5));
+      
       const unsubscribe = onSnapshot(q, 
         (querySnapshot) => {
           if (isMounted) {
@@ -45,6 +48,7 @@ export default function DashboardPage() {
         },
         (error) => {
           if (isMounted) {
+            console.error("Dashboard snapshot error:", error);
             if (error.name === 'AbortError' || error.code === 'cancelled') {
               console.log("Snapshot listener was cancelled. This is expected.");
               return;
@@ -54,7 +58,13 @@ export default function DashboardPage() {
           }
         }
       );
-      return () => { isMounted = false; unsubscribe(); };
+      
+      return () => {
+        isMounted = false;
+        unsubscribe();
+      };
+    } else if (!loading && (!userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0)) {
+        router.replace('/onboarding/create-family');
     }
   }, [user, userProfile, loading, router]);
 
@@ -101,17 +111,12 @@ export default function DashboardPage() {
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{userProfile.displayName}的儀表板</h1>
-            {/* --- 前往各功能頁面的連結 --- */}
-            <div className="flex items-center gap-4">
-              <Link href="/growth" className="text-sm font-medium text-blue-600 hover:underline">
-                生長曲線
-              </Link>
-              <Link href="/milestones" className="text-sm font-medium text-blue-600 hover:underline">
-                發展里程碑
-              </Link>
-              <Link href="/baby/edit" className="text-sm font-medium text-blue-600 hover:underline">
-                寶寶資料
-              </Link>
+            <div className="flex items-center gap-4 flex-wrap justify-end">
+              <Link href="/growth" className="text-sm font-medium text-blue-600 hover:underline">生長曲線</Link>
+              <Link href="/milestones" className="text-sm font-medium text-blue-600 hover:underline">發展里程碑</Link>
+              <Link href="/tools/vision-simulator" className="text-sm font-medium text-blue-600 hover:underline">視力模擬器</Link>
+              <Link href="/tools/milk-estimator" className="text-sm font-medium text-blue-600 hover:underline">奶量估算器</Link>
+              <Link href="/baby/edit" className="text-sm font-medium text-blue-600 hover:underline">寶寶資料</Link>
               <button onClick={signOutUser} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">登出</button>
             </div>
           </div>
@@ -153,7 +158,6 @@ export default function DashboardPage() {
       </div>
 
       <FloatingActionButton onAddRecord={handleOpenModal} />
-
       {isModalOpen && <AddRecordModal recordType={modalRecordType} onClose={() => setIsModalOpen(false)} />}
     </>
   );
