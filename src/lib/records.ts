@@ -9,7 +9,11 @@ import {
   deleteDoc,
   serverTimestamp, 
   DocumentData,
-  Timestamp
+  Timestamp,
+  query,
+  where,
+  orderBy,
+  getDocs
 } from 'firebase/firestore';
 import { UserProfile } from '@/contexts/AuthContext';
 
@@ -19,29 +23,36 @@ export interface RecordData extends DocumentData {
   babyId: string;
   creatorId: string;
   creatorName: string | null;
-  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food'; // --- 修改：新增 'solid-food' ---
+  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'bmi';
   timestamp: Timestamp;
   notes?: string;
   
-  // 針對不同類型的可選欄位
+  // For feeding
   amount?: number;
   method?: 'bottle' | 'breastfeeding';
+  
+  // For diaper
   diaperType?: ('wet' | 'dirty')[];
+
+  // For sleep
   startTime?: Timestamp;
   endTime?: Timestamp;
 
-  // --- 新增：針對副食品的欄位 ---
-  foodItems?: string; // 吃了什麼，用文字記錄
-  reaction?: 'good' | 'neutral' | 'bad'; // 寶寶反應
+  // For solid food
+  foodItems?: string;
+  reaction?: 'good' | 'neutral' | 'bad';
+
+  // For measurement or BMI
+  measurementType?: 'height' | 'weight' | 'headCircumference';
+  value?: number;
 }
 
 /**
  * 新增一筆記錄到 Firestore
- * @param recordData 不包含 timestamp 等伺服器生成欄位的資料物件
+ * @param recordData 包含要新增欄位的資料物件
  * @param userProfile 當前登入者的個人資料，用於獲取名稱
- * @returns 回傳一個指向新建立文件的參照
  */
-export const addRecord = async (recordData: Omit<RecordData, 'timestamp' | 'creatorName' | 'babyId'>, userProfile: UserProfile | null) => {
+export const addRecord = async (recordData: Partial<RecordData>, userProfile: UserProfile | null) => {
   if (!recordData.familyId || !recordData.creatorId) {
     throw new Error('Family ID and Creator ID are required.');
   }
@@ -50,12 +61,15 @@ export const addRecord = async (recordData: Omit<RecordData, 'timestamp' | 'crea
   }
 
   try {
-    const docRef = await addDoc(collection(db, 'records'), {
+    // 如果傳入的資料沒有 timestamp，才使用伺服器當前時間
+    const dataToSave = {
       ...recordData,
-      babyId: 'baby_01', // 暫時寫死，未來會動態選擇
-      creatorName: userProfile.displayName, // 從 userProfile 動態獲取
-      timestamp: serverTimestamp(), // 使用伺服器時間
-    });
+      babyId: 'baby_01', // 暫時寫死
+      creatorName: userProfile.displayName,
+      timestamp: recordData.timestamp || serverTimestamp(),
+    };
+
+    const docRef = await addDoc(collection(db, 'records'), dataToSave);
     console.log('Document written with ID: ', docRef.id);
     return docRef;
   } catch (e) {
@@ -76,6 +90,7 @@ export const updateRecord = async (recordId: string, updatedData: Partial<Record
   }
   const recordRef = doc(db, 'records', recordId);
   try {
+    // 直接使用傳入的 updatedData，它可能包含新的 timestamp
     await updateDoc(recordRef, updatedData);
     console.log('Document updated with ID: ', recordId);
   } catch (e) {
@@ -100,4 +115,24 @@ export const deleteRecord = async (recordId: string) => {
     console.error('Error deleting document: ', e);
     throw new Error('Failed to delete record.');
   }
+};
+
+/**
+ * 獲取指定寶寶的所有測量記錄
+ * @param familyId 家庭 ID
+ * @param babyId 寶寶 ID
+ * @returns 回傳包含所有測量記錄的陣列
+ */
+export const getMeasurementRecords = async (familyId: string, babyId: string) => {
+  const recordsRef = collection(db, 'records');
+  const q = query(
+    recordsRef,
+    where('familyId', '==', familyId),
+    where('babyId', '==', babyId),
+    where('type', '==', 'measurement'),
+    orderBy('timestamp', 'asc') // 按時間升序排列
+  );
+
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

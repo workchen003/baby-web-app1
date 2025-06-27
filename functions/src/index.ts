@@ -1,11 +1,16 @@
-// functions/src/index.ts
-
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+
+// v2 onCall 函式需要從 'firebase-functions/v2/https' 引入
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+
+// v2 Firestore 觸發器需要從 'firebase-functions/v2/firestore' 引入
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 
 admin.initializeApp();
 const db = admin.firestore();
 
+// --- 舊有的 onCall 函式，更新為 v2 onCall 語法 ---
 export const createInviteCode = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
@@ -58,4 +63,87 @@ export const acceptInvite = onCall(async (request) => {
     transaction.delete(inviteRef);
   });
   return { success: true, message: "Successfully joined the family!" };
+});
+
+// --- BMI 計算函式，更新為 v2 onDocumentWritten 語法 ---
+export const calculateAndStoreBMI = onDocumentWritten("records/{recordId}", async (event) => {
+  // 從 event.data 中獲取文件快照
+  if (!event.data?.after.exists) {
+    // 這是刪除事件，不處理
+    return null;
+  }
+
+  const newData = event.data.after.data();
+
+  if (!newData) {
+      functions.logger.log("No data associated with the event.");
+      return null;
+  }
+
+  if (newData.type !== "measurement" || !["weight", "height"].includes(newData.measurementType)) {
+    return null;
+  }
+  
+  const { babyId, familyId, timestamp, creatorId, creatorName } = newData;
+  const date = timestamp.toDate();
+  const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
+  const startTimestamp = admin.firestore.Timestamp.fromDate(startOfDay);
+  const endTimestamp = admin.firestore.Timestamp.fromDate(endOfDay);
+  
+  const recordsRef = db.collection("records");
+  
+  const querySnapshot = await recordsRef
+    .where("familyId", "==", familyId)
+    .where("babyId", "==", babyId)
+    .where("type", "==", "measurement")
+    .where("timestamp", ">=", startTimestamp)
+    .where("timestamp", "<=", endTimestamp)
+    .get();
+
+  let weight: number | null = null;
+  let height: number | null = null;
+  let weightTimestamp: admin.firestore.Timestamp | null = null;
+
+  querySnapshot.forEach((doc) => {
+    const record = doc.data();
+    if (record.measurementType === "weight") {
+      weight = record.value;
+      weightTimestamp = record.timestamp;
+    }
+    if (record.measurementType === "height") {
+      height = record.value;
+    }
+  });
+
+  if (weight && height && weightTimestamp) {
+    const heightInMeters = height / 100;
+    const bmiValue = weight / (heightInMeters * heightInMeters);
+
+    const bmiQuery = await recordsRef
+      .where("familyId", "==", familyId)
+      .where("babyId", "==", babyId)
+      .where("type", "==", "bmi")
+      .where("timestamp", "==", weightTimestamp)
+      .limit(1)
+      .get();
+
+    if (bmiQuery.empty) {
+      await recordsRef.add({
+        familyId,
+        babyId,
+        type: "bmi",
+        value: parseFloat(bmiValue.toFixed(2)),
+        timestamp: weightTimestamp,
+        creatorId: creatorId,
+        creatorName: creatorName,
+      });
+      functions.logger.log(`BMI calculated and stored for baby ${babyId} on ${date.toLocaleDateString()}: ${bmiValue.toFixed(2)}`);
+    } else {
+      functions.logger.log(`BMI record already exists for baby ${babyId} on ${date.toLocaleDateString()}`);
+    }
+  }
+  
+  return null;
 });

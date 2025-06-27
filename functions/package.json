@@ -15,6 +15,7 @@
     "firebase-functions": "^5.0.0"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.19",
     "typescript": "^5.0.0"
   },
   "private": true
