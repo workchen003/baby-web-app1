@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, ChangeEvent, useEffect } from 'react';
+// --- 核心修正：從 react 的 import 中移除未使用的 ChangeEvent ---
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -16,11 +17,10 @@ export default function MilkEstimatorPage() {
   const [perFeedVolume, setPerFeedVolume] = useState<number>(0);
   const [error, setError] = useState<string>('');
 
-  // 效果：嘗試自動載入寶寶的最新體重
   useEffect(() => {
     if (userProfile && userProfile.familyIDs) {
       const familyId = userProfile.familyIDs[0];
-      const babyId = 'baby_01'; // 暫時寫死
+      const babyId = 'baby_01'; 
 
       const recordsRef = collection(db, 'records');
       const q = query(
@@ -41,7 +41,6 @@ export default function MilkEstimatorPage() {
     }
   }, [userProfile]);
 
-  // --- 核心修改：實現計算邏輯 ---
   const handleCalculate = () => {
     setError('');
     const weightNum = parseFloat(weight);
@@ -56,10 +55,7 @@ export default function MilkEstimatorPage() {
       return;
     }
 
-    // 根據公式計算
-    // 每日總量 (ml) = 體重 (kg) * 150
     const totalMl = weightNum * 150;
-    // 單次奶量 (ml) = 總量 / 次數
     const perFeedMl = totalMl / feedsNum;
 
     setDailyVolume(totalMl);
@@ -72,44 +68,21 @@ export default function MilkEstimatorPage() {
         <h1 className="text-3xl font-bold">奶量估算器</h1>
         <Link href="/dashboard" className="text-blue-600 hover:underline">&larr; 返回儀表板</Link>
       </header>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* 輸入區 */}
         <div className="p-6 bg-white rounded-lg shadow-md space-y-6">
           <div>
             <label htmlFor="weight" className="block text-sm font-medium text-gray-700">寶寶目前體重 (kg)</label>
-            <input
-              id="weight"
-              type="number"
-              step="0.1"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              placeholder="例如：5.5"
-            />
+            <input id="weight" type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：5.5" />
           </div>
           <div>
             <label htmlFor="feeds" className="block text-sm font-medium text-gray-700">每日哺乳次數</label>
-            <input
-              id="feeds"
-              type="number"
-              step="1"
-              value={feedsPerDay}
-              onChange={(e) => setFeedsPerDay(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm"
-              placeholder="例如：8"
-            />
+            <input id="feeds" type="number" step="1" value={feedsPerDay} onChange={(e) => setFeedsPerDay(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：8" />
           </div>
           {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            onClick={handleCalculate}
-            className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700"
-          >
+          <button onClick={handleCalculate} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
             計算建議奶量
           </button>
         </div>
-
-        {/* 結果顯示區 */}
         <div className="p-6 bg-blue-50 rounded-lg shadow-inner flex flex-col justify-center items-center text-center">
           {dailyVolume > 0 ? (
             <>
