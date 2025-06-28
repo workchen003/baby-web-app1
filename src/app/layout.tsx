@@ -1,18 +1,15 @@
-// src/app/layout.tsx
+// [修正] src/app/layout.tsx
 
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+// [修正] 將 Geist 字型替換為標準的 Inter 字型
+import { Inter } from "next/font/google";
 import "./globals.css";
-// 引入我們剛才建立的 AuthProvider
 import { AuthProvider } from "@/contexts/AuthContext";
 
-const geistSans = Geist({
+// [修正] 初始化 Inter 字型
+// 我們保留了 variable 名稱 (--font-geist-sans) 以避免需要修改 CSS 檔案
+const inter = Inter({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
@@ -28,10 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      {/* [修正] 更新 body 的 className，暫時移除 mono 字型以簡化 */}
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} antialiased`}
       >
-        {/* 將整個應用程式包裹起來 */}
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
