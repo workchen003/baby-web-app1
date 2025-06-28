@@ -96,9 +96,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUserProfile(profile);
         } else {
           setUser(null);
-          setUserProfile(null);
+          setUserProfile(null);ㄋ
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Error during auth state change:", error);
         setUser(null);
         setUserProfile(null);
