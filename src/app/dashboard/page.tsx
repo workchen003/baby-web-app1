@@ -111,7 +111,9 @@ export default function DashboardPage() {
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{userProfile.displayName}的儀表板</h1>
+            {/* [修正] 在此處新增「育兒知識庫」的連結 */}
             <div className="flex items-center gap-4 flex-wrap justify-end">
+              <Link href="/articles" className="text-sm font-medium text-purple-600 hover:underline">育兒知識庫</Link>
               <Link href="/growth" className="text-sm font-medium text-blue-600 hover:underline">生長曲線</Link>
               <Link href="/milestones" className="text-sm font-medium text-blue-600 hover:underline">發展里程碑</Link>
               <Link href="/tools/vision-simulator" className="text-sm font-medium text-blue-600 hover:underline">視力模擬器</Link>
