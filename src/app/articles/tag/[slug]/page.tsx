@@ -1,18 +1,19 @@
 // [修正] src/app/articles/tag/[slug]/page.tsx
 
 import Link from 'next/link';
-// [修正] 從下面的 import 中移除了未使用的 'Article' 型別
 import { getPublishedArticles, getFilterOptions } from '@/lib/articles';
 import ArticleCard from '@/components/ArticleCard';
 import ArticleFilter from '@/components/ArticleFilter';
 
 export const revalidate = 3600;
 
-interface PageProps {
-  params: { slug: string };
-}
+// [移除] 不再需要自訂 PageProps 介面
+// interface PageProps {
+//   params: { slug: string };
+// }
 
-export default async function TagArticlePage({ params }: PageProps) {
+// [修正] 直接在函式簽名中定義 props 的型別
+export default async function TagArticlePage({ params }: { params: { slug: string } }) {
   const tag = decodeURIComponent(params.slug);
   
   const [articles, { categories, tags }] = await Promise.all([
