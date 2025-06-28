@@ -1,16 +1,44 @@
 // src/app/admin/articles/page.tsx
 'use client';
 
+import { useState, useEffect } from 'react'; // 引入 useState 和 useEffect
 import Link from 'next/link';
-
-// 暫時的文章假資料
-const dummyArticles = [
-  { id: '1', title: '第一篇知識文章', status: 'published', updatedAt: '2025-06-28' },
-  { id: '2', title: '寶寶副食品該怎麼吃？', status: 'published', updatedAt: '2025-06-27' },
-  { id: '3', title: '關於睡眠訓練的二三事', status: 'draft', updatedAt: '2025-06-26' },
-];
+import { getArticles, Article } from '@/lib/articles'; // 引入我們的函式與型別
 
 export default function ArticleListPage() {
+  // 建立三個 state 來管理我們的資料、載入狀態和錯誤訊息
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // 使用 useEffect 在元件載入時執行一次資料獲取
+  useEffect(() => {
+    const fetchArticles = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const fetchedArticles = await getArticles();
+        setArticles(fetchedArticles);
+      } catch (err) {
+        console.error("Error fetching articles:", err);
+        setError("無法載入文章列表，請稍後再試。");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchArticles();
+  }, []); // 空依賴陣列 [] 表示這個 effect 只在元件首次掛載時執行一次
+
+  // 根據載入狀態顯示不同內容
+  if (isLoading) {
+    return <div className="p-8 text-center">正在載入文章...</div>;
+  }
+
+  if (error) {
+    return <div className="p-8 text-center text-red-500">{error}</div>;
+  }
+
   return (
     <div className="p-8">
       <header className="flex items-center justify-between mb-8">
@@ -22,6 +50,7 @@ export default function ArticleListPage() {
 
       <div className="bg-white rounded-lg shadow">
         <table className="w-full table-auto">
+          {/* thead 維持不變 */}
           <thead className="bg-gray-50 text-left">
             <tr>
               <th className="px-6 py-3 text-sm font-medium text-gray-500 uppercase tracking-wider">標題</th>
@@ -31,33 +60,44 @@ export default function ArticleListPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {dummyArticles.map(article => (
-              <tr key={article.id}>
-                <td className="px-6 py-4 whitespace-nowrap">{article.title}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {article.status === 'published' ? (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      已發布
-                    </span>
-                  ) : (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      草稿
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">{article.updatedAt}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <a href="#" className="text-indigo-600 hover:text-indigo-900">編輯</a>
-                  <a href="#" className="ml-4 text-red-600 hover:text-red-900">刪除</a>
+            {articles.length > 0 ? (
+              articles.map(article => (
+                <tr key={article.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">{article.title}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {article.status === 'published' ? (
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        已發布
+                      </span>
+                    ) : (
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        草稿
+                      </span>
+                    )}
+                  </td>
+                  {/* 將 Firestore 的 Timestamp 轉換為可讀日期 */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {article.updatedAt?.toDate().toLocaleDateString('zh-TW')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <a href="#" className="text-indigo-600 hover:text-indigo-900">編輯</a>
+                    <a href="#" className="ml-4 text-red-600 hover:text-red-900">刪除</a>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} className="text-center py-12 text-gray-500">
+                  目前沒有任何文章，點擊右上角新增第一篇吧！
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
       <div className="mt-8">
         <Link href="/admin" className="text-sm text-gray-500 hover:underline">
-            &larr; 返回儀表板
+          &larr; 返回儀表板
         </Link>
       </div>
     </div>
