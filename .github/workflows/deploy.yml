@@ -58,3 +58,5 @@ jobs:
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
           channelId: live
           projectId: babix-app # 明確指定您的專案 ID
+        env: # <--- 新增這個 env 區塊
+          FIREBASE_CLI_EXPERIMENTS: webframeworks # <--- 新增這一行
