@@ -10,7 +10,7 @@ export interface UserProfile extends DocumentData {
   email: string | null;
   displayName: string | null;
   familyIDs?: string[];
-  role?: 'admin' | 'user'; // role 欄位維持可選
+  role?: 'admin' | 'user';
 }
 
 interface AuthContextType {
@@ -32,46 +32,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // **** 核心修正點 ****
   const syncUserData = useCallback(async (currentUser: User): Promise<UserProfile> => {
     const userRef = doc(db, 'users', currentUser.uid);
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-      // 情況1：新使用者註冊
       const newUserProfile: UserProfile = {
         uid: currentUser.uid,
         email: currentUser.email,
         displayName: currentUser.displayName,
         familyIDs: [],
-        role: 'user', // 新註冊的使用者，預設角色為 'user'
+        role: 'user',
       };
       await setDoc(userRef, { 
-          ...newUserProfile, 
-          lastLogin: serverTimestamp(),
-          createdAt: serverTimestamp() 
+        ...newUserProfile, 
+        lastLogin: serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
-      // 直接回傳我們剛剛建立的 profile 物件
       return newUserProfile;
     } else {
-      // 情況2：現有使用者登入
       const existingData = userDoc.data() as UserProfile;
-      const dataToUpdate: any = {
-        lastLogin: serverTimestamp()
+      const dataToUpdate: Partial<UserProfile> = {
+        lastLogin: serverTimestamp(),
       };
       let roleToReturn = existingData.role;
 
-      // 如果資料庫中的使用者沒有 role 欄位，幫他們補上 'user'
       if (!existingData.role) {
         dataToUpdate.role = 'user';
-        roleToReturn = 'user'; // 確保回傳的 profile 也有這個新角色
-        await setDoc(userRef, dataToUpdate, { merge: true });
-      } else {
-        // 如果已有角色，只需更新登入時間
-        await setDoc(userRef, dataToUpdate, { merge: true });
+        roleToReturn = 'user';
       }
       
-      // 回傳一個包含最新角色的 profile 物件
+      await setDoc(userRef, dataToUpdate, { merge: true });
       return { ...existingData, role: roleToReturn };
     }
   }, []);
@@ -81,7 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const profile = await syncUserData(user);
         setUserProfile(profile);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Error refetching user profile:", error);
       }
     }
@@ -96,9 +87,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUserProfile(profile);
         } else {
           setUser(null);
-          setUserProfile(null);ㄋ
+          setUserProfile(null);
         }
-      } catch (error: unknown) {
+      } catch (error: unknown) { // <-- 修正點一：明確指定 error 型別
         console.error("Error during auth state change:", error);
         setUser(null);
         setUserProfile(null);
@@ -107,7 +98,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe(); // 修正點二：確保 cleanup 函式有實際作用
+    };
   }, [syncUserData]);
 
   const value = { user, userProfile, loading, refetchUserProfile };
