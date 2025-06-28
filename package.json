@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tiptap/pm": "^2.23.0",
+    "@tiptap/react": "^2.23.0",
+    "@tiptap/starter-kit": "^2.23.0",
     "@types/recharts": "^2.0.1",
     "firebase": "^11.9.1",
     "next": "15.3.4",
