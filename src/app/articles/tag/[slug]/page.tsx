@@ -1,29 +1,12 @@
-// [最終修正] src/app/articles/tag/[slug]/page.tsx
-
 import Link from 'next/link';
 import { getPublishedArticles, getFilterOptions } from '@/lib/articles';
 import ArticleCard from '@/components/ArticleCard';
 import ArticleFilter from '@/components/ArticleFilter';
-import type { Metadata } from 'next'; // [新增] 引入 Metadata 型別
 
 export const revalidate = 3600;
 
-// 定義頁面 Props 的型別
-type Props = {
-  params: { slug: string };
-};
-
-// [新增] 動態生成頁面元數據 (Metadata) 的函式
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const tag = decodeURIComponent(params.slug);
-  return {
-    title: `標籤：#${tag} | 育兒知識庫`,
-    description: `探索所有標記為「${tag}」的育兒文章、技巧與指南。`,
-  };
-}
-
-// 在 Page 元件中使用 Props 型別
-export default async function TagArticlePage({ params }: Props) {
+// 使用最標準的 inline-type 方式定義 props
+export default async function TagArticlePage({ params }: { params: { slug: string } }) {
   const tag = decodeURIComponent(params.slug);
   
   const [articles, { categories, tags }] = await Promise.all([
