@@ -10,6 +10,7 @@ export interface UserProfile extends DocumentData {
   email: string | null;
   displayName: string | null;
   familyIDs?: string[];
+  role?: 'admin' | 'user'; // role 欄位維持可選
 }
 
 interface AuthContextType {
@@ -31,22 +32,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // **** 核心修正點 ****
   const syncUserData = useCallback(async (currentUser: User): Promise<UserProfile> => {
     const userRef = doc(db, 'users', currentUser.uid);
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-        const newUserProfile: UserProfile = {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            familyIDs: [],
-        };
-        await setDoc(userRef, { ...newUserProfile, lastLogin: serverTimestamp() });
-        return newUserProfile;
+      // 情況1：新使用者註冊
+      const newUserProfile: UserProfile = {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        displayName: currentUser.displayName,
+        familyIDs: [],
+        role: 'user', // 新註冊的使用者，預設角色為 'user'
+      };
+      await setDoc(userRef, { 
+          ...newUserProfile, 
+          lastLogin: serverTimestamp(),
+          createdAt: serverTimestamp() 
+      });
+      // 直接回傳我們剛剛建立的 profile 物件
+      return newUserProfile;
     } else {
-        await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
-        return userDoc.data() as UserProfile;
+      // 情況2：現有使用者登入
+      const existingData = userDoc.data() as UserProfile;
+      const dataToUpdate: any = {
+        lastLogin: serverTimestamp()
+      };
+      let roleToReturn = existingData.role;
+
+      // 如果資料庫中的使用者沒有 role 欄位，幫他們補上 'user'
+      if (!existingData.role) {
+        dataToUpdate.role = 'user';
+        roleToReturn = 'user'; // 確保回傳的 profile 也有這個新角色
+        await setDoc(userRef, dataToUpdate, { merge: true });
+      } else {
+        // 如果已有角色，只需更新登入時間
+        await setDoc(userRef, dataToUpdate, { merge: true });
+      }
+      
+      // 回傳一個包含最新角色的 profile 物件
+      return { ...existingData, role: roleToReturn };
     }
   }, []);
 
@@ -63,7 +89,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // 使用 try...catch...finally 包裹所有非同步操作，以處理 AbortError
       try {
         if (user) {
           const profile = await syncUserData(user);
@@ -75,11 +100,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (error) {
         console.error("Error during auth state change:", error);
-        // 發生錯誤時，將使用者狀態重置，避免不一致
         setUser(null);
         setUserProfile(null);
       } finally {
-        // 無論成功或失敗，最終都將 loading 狀態設為 false
         setLoading(false);
       }
     });
