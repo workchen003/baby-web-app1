@@ -1,7 +1,7 @@
-// [新增] src/components/ArticleCard.tsx
+// [修正] src/components/ArticleCard.tsx
 
 import Link from 'next/link';
-import Image from 'next/image';
+// [修正] 移除了未使用的 'Image' import
 import { Article } from '@/lib/articles';
 
 // 移除 HTML 標籤並截斷文字的輔助函式

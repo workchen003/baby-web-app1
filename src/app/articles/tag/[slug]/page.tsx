@@ -1,7 +1,8 @@
-// [新增] src/app/articles/tag/[slug]/page.tsx
+// [修正] src/app/articles/tag/[slug]/page.tsx
 
 import Link from 'next/link';
-import { getPublishedArticles, getFilterOptions, Article } from '@/lib/articles';
+// [修正] 從下面的 import 中移除了未使用的 'Article' 型別
+import { getPublishedArticles, getFilterOptions } from '@/lib/articles';
 import ArticleCard from '@/components/ArticleCard';
 import ArticleFilter from '@/components/ArticleFilter';
 
