@@ -7,13 +7,14 @@ import ArticleFilter from '@/components/ArticleFilter';
 
 export const revalidate = 3600;
 
-// [移除] 不再需要自訂 PageProps 介面
-// interface PageProps {
-//   params: { slug: string };
-// }
+// [修正] 使用一個更明確的 Props 型別定義，包含 params 和 searchParams
+type Props = {
+  params: { slug: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+};
 
-// [修正] 直接在函式簽名中定義 props 的型別
-export default async function TagArticlePage({ params }: { params: { slug: string } }) {
+// [修正] 在函式簽名中使用新的 Props 型別
+export default async function TagArticlePage({ params }: Props) {
   const tag = decodeURIComponent(params.slug);
   
   const [articles, { categories, tags }] = await Promise.all([
