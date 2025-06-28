@@ -1,35 +1,121 @@
-import { 
-  collection, 
-  doc, 
+// [修改] src/lib/articles.ts
+
+import {
+  collection,
+  doc,
   addDoc,
   getDocs,
   orderBy,
   query,
-  serverTimestamp, 
+  serverTimestamp,
   DocumentData,
   Timestamp,
   getDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  where,
+  QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
 // 定義文章的狀態
 export type ArticleStatus = 'draft' | 'published';
 
-// 定義文章的資料結構介面
+// 定义文章的資料結構介面
+// [修正] 確保 createdAt 和 updatedAt 的型別為 Date
 export interface Article extends DocumentData {
-  id: string; // Firestore document ID
+  id: string;
   title: string;
-  content: string; // HTML content from Tiptap
+  content: string;
   category: string;
   tags: string[];
   coverImageUrl: string;
   status: ArticleStatus;
   authorId: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: Date; // 型別應為 Date
+  updatedAt: Date; // 型別應為 Date
 }
+
+// 篩選條件的介面
+interface GetArticlesOptions {
+  category?: string;
+  tag?: string;
+}
+
+// 將 Firestore 文件轉換為 Article 物件的輔助函式
+const docToArticle = (docSnap: DocumentData): Article => {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      title: data.title,
+      content: data.content,
+      category: data.category,
+      tags: data.tags,
+      coverImageUrl: data.coverImageUrl,
+      status: data.status,
+      authorId: data.authorId,
+      // [修正] 將 Timestamp 轉換為 Date
+      createdAt: (data.createdAt as Timestamp)?.toDate(),
+      updatedAt: (data.updatedAt as Timestamp)?.toDate(),
+    } as Article;
+};
+
+
+/**
+ * 獲取所有「已發布」的文章，並可選擇性地進行篩選
+ * @param options - 包含篩選條件的物件 (category 或 tag)
+ * @returns 回傳包含符合條件文章的陣列
+ */
+export const getPublishedArticles = async (options: GetArticlesOptions = {}): Promise<Article[]> => {
+  const articlesRef = collection(db, 'articles');
+  const constraints: QueryConstraint[] = [
+    where('status', '==', 'published'),
+    orderBy('createdAt', 'desc')
+  ];
+
+  if (options.category) {
+    constraints.push(where('category', '==', options.category));
+  }
+  if (options.tag) {
+    constraints.push(where('tags', 'array-contains', options.tag));
+  }
+
+  const articlesQuery = query(articlesRef, ...constraints);
+  
+  const querySnapshot = await getDocs(articlesQuery);
+  
+  // [修正] 使用 docToArticle 進行轉換
+  return querySnapshot.docs.map(doc => docToArticle(doc));
+};
+
+
+/**
+ * 獲取所有文章中唯一的分類與標籤，用於篩選器
+ * @returns 回傳一個包含所有分類和標籤的物件
+ */
+export const getFilterOptions = async (): Promise<{ categories: string[], tags: string[] }> => {
+    const articlesQuery = query(collection(db, 'articles'), where('status', '==', 'published'));
+    const querySnapshot = await getDocs(articlesQuery);
+    
+    const categories = new Set<string>();
+    const tags = new Set<string>();
+
+    querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.category) {
+            categories.add(data.category);
+        }
+        if (Array.isArray(data.tags)) {
+            data.tags.forEach(tag => tags.add(tag));
+        }
+    });
+
+    return {
+        categories: Array.from(categories).sort(),
+        tags: Array.from(tags).sort(),
+    };
+};
+
 
 /**
  * 新增一篇文章到 Firestore
@@ -60,12 +146,7 @@ export const getArticles = async (): Promise<Article[]> => {
   
   const querySnapshot = await getDocs(articlesQuery);
   
-  return querySnapshot.docs.map(doc => {
-    return {
-      id: doc.id,
-      ...doc.data()
-    } as Article;
-  });
+  return querySnapshot.docs.map(doc => docToArticle(doc));
 };
 
 /**
@@ -78,12 +159,14 @@ export const getArticleById = async (id: string): Promise<Article | null> => {
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
-    return { id: docSnap.id, ...docSnap.data() } as Article;
+    // [修正] 使用輔助函式確保型別正確
+    return docToArticle(docSnap);
   } else {
     console.warn(`Article with ID ${id} not found.`);
     return null;
   }
 };
+
 
 /**
  * 更新一篇文章
