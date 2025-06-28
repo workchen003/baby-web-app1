@@ -1,4 +1,3 @@
-// src/lib/articles.ts
 import { 
   collection, 
   doc, 
@@ -8,7 +7,10 @@ import {
   query,
   serverTimestamp, 
   DocumentData,
-  Timestamp
+  Timestamp,
+  getDoc,
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -17,7 +19,7 @@ export type ArticleStatus = 'draft' | 'published';
 
 // 定義文章的資料結構介面
 export interface Article extends DocumentData {
-  id: string; // 在讀取時，我們會把 document ID 放進來
+  id: string; // Firestore document ID
   title: string;
   content: string; // HTML content from Tiptap
   category: string;
@@ -54,18 +56,65 @@ export const addArticle = async (articleData: Omit<Article, 'id' | 'createdAt' |
  * @returns 回傳包含所有文章的陣列
  */
 export const getArticles = async (): Promise<Article[]> => {
-  // 建立一個查詢，指向 articles 集合，並依照 createdAt 欄位做降冪排序 (最新的在最前面)
   const articlesQuery = query(collection(db, 'articles'), orderBy('createdAt', 'desc'));
   
   const querySnapshot = await getDocs(articlesQuery);
   
-  // 將查詢結果的每個文件，轉換成我們定義的 Article 型別
   return querySnapshot.docs.map(doc => {
     return {
-      id: doc.id, // 將文件 ID 加入到物件中
+      id: doc.id,
       ...doc.data()
     } as Article;
   });
 };
 
-// 後續我們會在這裡新增 updateArticle, deleteArticle 等函式...
+/**
+ * 根據 ID 獲取單一篇文章
+ * @param id - 文章的 document ID
+ * @returns 回傳文章物件，若找不到則回傳 null
+ */
+export const getArticleById = async (id: string): Promise<Article | null> => {
+  const docRef = doc(db, 'articles', id);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() } as Article;
+  } else {
+    console.warn(`Article with ID ${id} not found.`);
+    return null;
+  }
+};
+
+/**
+ * 更新一篇文章
+ * @param id - 要更新的文章 ID
+ * @param data - 要更新的欄位資料
+ */
+export const updateArticle = async (id: string, data: Partial<Omit<Article, 'id' | 'createdAt'>>) => {
+  const docRef = doc(db, 'articles', id);
+  try {
+    await updateDoc(docRef, {
+      ...data,
+      updatedAt: serverTimestamp()
+    });
+    console.log('Article updated with ID: ', id);
+  } catch (e) {
+    console.error('Error updating article: ', e);
+    throw new Error('Failed to update article.');
+  }
+};
+
+/**
+ * 刪除一篇文章
+ * @param id - 要刪除的文章 ID
+ */
+export const deleteArticle = async (id: string) => {
+  const docRef = doc(db, 'articles', id);
+  try {
+    await deleteDoc(docRef);
+    console.log('Article deleted with ID: ', id);
+  } catch (e) {
+    console.error('Error deleting article: ', e);
+    throw new Error('Failed to delete article.');
+  }
+};

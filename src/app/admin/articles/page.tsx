@@ -1,19 +1,16 @@
-// src/app/admin/articles/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react'; // 引入 useState 和 useEffect
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getArticles, Article } from '@/lib/articles'; // 引入我們的函式與型別
+import { getArticles, deleteArticle, Article } from '@/lib/articles';
 
 export default function ArticleListPage() {
-  // 建立三個 state 來管理我們的資料、載入狀態和錯誤訊息
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 使用 useEffect 在元件載入時執行一次資料獲取
-  useEffect(() => {
-    const fetchArticles = async () => {
+  // 將獲取文章的邏輯封裝成一個函式，方便重複呼叫
+  const fetchArticles = async () => {
       try {
         setIsLoading(true);
         setError(null);
@@ -25,12 +22,27 @@ export default function ArticleListPage() {
       } finally {
         setIsLoading(false);
       }
-    };
+  };
 
+  useEffect(() => {
     fetchArticles();
-  }, []); // 空依賴陣列 [] 表示這個 effect 只在元件首次掛載時執行一次
+  }, []);
+  
+  // 刪除文章的處理函式
+  const handleDelete = async (id: string, title: string) => {
+    if (window.confirm(`您確定要刪除文章「${title}」嗎？此操作無法復原。`)) {
+      try {
+        await deleteArticle(id);
+        // 直接從 state 中移除，UI 反應更快
+        setArticles(prevArticles => prevArticles.filter(article => article.id !== id));
+        alert('文章刪除成功！');
+      } catch (err) {
+        alert('刪除文章時發生錯誤。');
+        console.error(err);
+      }
+    }
+  };
 
-  // 根據載入狀態顯示不同內容
   if (isLoading) {
     return <div className="p-8 text-center">正在載入文章...</div>;
   }
@@ -50,7 +62,6 @@ export default function ArticleListPage() {
 
       <div className="bg-white rounded-lg shadow">
         <table className="w-full table-auto">
-          {/* thead 維持不變 */}
           <thead className="bg-gray-50 text-left">
             <tr>
               <th className="px-6 py-3 text-sm font-medium text-gray-500 uppercase tracking-wider">標題</th>
@@ -63,7 +74,7 @@ export default function ArticleListPage() {
             {articles.length > 0 ? (
               articles.map(article => (
                 <tr key={article.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">{article.title}</td>
+                  <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{article.title}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {article.status === 'published' ? (
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -75,13 +86,16 @@ export default function ArticleListPage() {
                       </span>
                     )}
                   </td>
-                  {/* 將 Firestore 的 Timestamp 轉換為可讀日期 */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {article.updatedAt?.toDate().toLocaleDateString('zh-TW')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <a href="#" className="text-indigo-600 hover:text-indigo-900">編輯</a>
-                    <a href="#" className="ml-4 text-red-600 hover:text-red-900">刪除</a>
+                    <Link href={`/admin/articles/edit/${article.id}`} className="text-indigo-600 hover:text-indigo-900">
+                      編輯
+                    </Link>
+                    <button onClick={() => handleDelete(article.id, article.title)} className="ml-4 text-red-600 hover:text-red-900">
+                      刪除
+                    </button>
                   </td>
                 </tr>
               ))
