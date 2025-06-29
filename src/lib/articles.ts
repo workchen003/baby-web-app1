@@ -15,17 +15,18 @@ import {
   deleteDoc,
   where,
   QueryConstraint,
+  limit, // [新增]
+  documentId, // [新增]
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-// 定義文章的狀態
+// ... (既有的 Article, GetArticlesOptions 等型別定義保持不變)
 export type ArticleStatus = 'draft' | 'published';
 
-// 定義文章的資料結構介面
 export interface Article extends DocumentData {
-  id: string; // Firestore document ID
+  id: string;
   title: string;
-  content: string; // HTML content from Tiptap
+  content: string;
   category: string;
   tags: string[];
   coverImageUrl: string;
@@ -40,6 +41,7 @@ interface GetArticlesOptions {
   tag?: string;
 }
 
+// ... (既有的 getPublishedArticles, getFilterOptions 等函式保持不變)
 export const getPublishedArticles = async (options: GetArticlesOptions = {}): Promise<Article[]> => {
   const articlesRef = collection(db, 'articles');
   const constraints: QueryConstraint[] = [
@@ -89,18 +91,11 @@ export const getFilterOptions = async (): Promise<{ categories: string[], tags: 
     };
 };
 
-/**
- * [修改] 根據 ID 獲取單一篇文章
- * @param id - 文章的 document ID
- * @returns 回傳文章物件，若找不到則回傳 null
- */
 export const getArticleById = async (id: string): Promise<Article | null> => {
   const docRef = doc(db, 'articles', id);
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
-    // [修正] 直接回傳 Firestore 的原始資料，不做 Timestamp 到 Date 的轉換。
-    // 這樣可以確保回傳的物件符合 Article 介面的型別定義。
     return { id: docSnap.id, ...docSnap.data() } as Article;
   } else {
     console.warn(`Article with ID ${id} not found.`);
@@ -108,8 +103,60 @@ export const getArticleById = async (id: string): Promise<Article | null> => {
   }
 };
 
-// --- 以下為既有函式，保持不變 ---
 
+/**
+ * [新增] 獲取相關文章
+ * @param currentArticle - 當前正在瀏覽的文章物件
+ * @returns 回傳最多 3 篇相關文章的陣列
+ */
+export const getRelatedArticles = async (currentArticle: Article): Promise<Article[]> => {
+    if (!currentArticle) return [];
+
+    const articlesRef = collection(db, 'articles');
+    let relatedArticles: Article[] = [];
+    const foundIds = new Set<string>([currentArticle.id]);
+
+    // 1. 優先找尋相同分類的文章
+    if (currentArticle.category) {
+        const categoryQuery = query(
+            articlesRef,
+            where('status', '==', 'published'),
+            where('category', '==', currentArticle.category),
+            where(documentId(), '!=', currentArticle.id),
+            limit(3)
+        );
+        const categorySnapshot = await getDocs(categoryQuery);
+        categorySnapshot.forEach(doc => {
+            if (!foundIds.has(doc.id)) {
+                relatedArticles.push({ id: doc.id, ...doc.data() } as Article);
+                foundIds.add(doc.id);
+            }
+        });
+    }
+
+    // 2. 如果相同分類的文章不足 3 篇，再從標籤中尋找
+    if (relatedArticles.length < 3 && currentArticle.tags && currentArticle.tags.length > 0) {
+        const tagsQuery = query(
+            articlesRef,
+            where('status', '==', 'published'),
+            where('tags', 'array-contains-any', currentArticle.tags),
+            limit(5) // 多取幾篇以防重複
+        );
+        const tagsSnapshot = await getDocs(tagsQuery);
+        tagsSnapshot.forEach(doc => {
+            // 確保不超過3篇，且不重複
+            if (relatedArticles.length < 3 && !foundIds.has(doc.id)) {
+                relatedArticles.push({ id: doc.id, ...doc.data() } as Article);
+                foundIds.add(doc.id);
+            }
+        });
+    }
+    
+    return relatedArticles.slice(0, 3);
+};
+
+
+// ... (既有的 addArticle, updateArticle, deleteArticle 等函式保持不變)
 export const addArticle = async (articleData: Omit<Article, 'id' | 'createdAt' | 'updatedAt'>) => {
   try {
     const dataWithTimestamps = {
