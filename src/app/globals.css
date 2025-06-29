@@ -1,3 +1,4 @@
+/* [修改] src/app/globals.css */
 @import "tailwindcss";
 
 :root {
@@ -25,7 +26,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Floating Action Button (FAB) Styles */
+/* ... (既有的 floating-button-group 樣式保持不變) ... */
 .floating-button-group {
     position: fixed;
     bottom: 2.5rem;
@@ -50,3 +51,13 @@ body {
 .floating-button-group.open .sub-button:nth-child(1) { transition-delay: 0.05s; }
 .floating-button-group.open .sub-button:nth-child(2) { transition-delay: 0.1s; }
 .floating-button-group.open .sub-button:nth-child(3) { transition-delay: 0.15s; }
+
+
+/* [新增] 優化文章內容的圖片樣式 */
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem; /* 圓角 */
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
