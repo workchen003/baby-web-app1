@@ -52,7 +52,7 @@ export interface RecordData extends DocumentData {
   // For measurement or BMI
   measurementType?: 'height' | 'weight' | 'headCircumference';
   value?: number;
-
+  
   // For snapshot
   imageUrl?: string;
 }
@@ -109,6 +109,7 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
   }
 
   try {
+    // 如果傳入的資料沒有 timestamp，才使用伺服器當前時間
     const dataToSave = {
       ...recordData,
       babyId: 'baby_01', // 暫時寫死
@@ -137,6 +138,7 @@ export const updateRecord = async (recordId: string, updatedData: Partial<Record
   }
   const recordRef = doc(db, 'records', recordId);
   try {
+    // 直接使用傳入的 updatedData，它可能包含新的 timestamp
     await updateDoc(recordRef, updatedData);
     console.log('Document updated with ID: ', recordId);
   } catch (e) {
@@ -176,7 +178,7 @@ export const getMeasurementRecords = async (familyId: string, babyId: string) =>
     where('familyId', '==', familyId),
     where('babyId', '==', babyId),
     where('type', '==', 'measurement'),
-    orderBy('timestamp', 'asc')
+    orderBy('timestamp', 'asc') // 按時間升序排列
   );
 
   const querySnapshot = await getDocs(q);
