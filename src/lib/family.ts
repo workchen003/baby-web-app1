@@ -1,4 +1,4 @@
-// [修改] src/lib/family.ts
+// src/lib/family.ts
 
 import { db } from './firebase';
 import {
@@ -34,6 +34,9 @@ export const createFamily = async (
     // 同時也儲存一個只包含 UID 的陣列，專門給安全規則使用
     memberUIDs: [user.uid], 
     babyIDs: [],
+    // [新增] 新增 PDF 匯出相關欄位
+    lastPdfExportYear: null, // 儲存上次匯出的年份，例如 2025
+    pdfExportCount: 0,
   });
 
   const userRef = doc(db, 'users', user.uid);
