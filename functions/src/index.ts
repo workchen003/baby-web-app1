@@ -1,16 +1,14 @@
+// functions/src/index.ts
+
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-
-// v2 onCall 函式需要從 'firebase-functions/v2/https' 引入
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-
-// v2 Firestore 觸發器需要從 'firebase-functions/v2/firestore' 引入
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 
 admin.initializeApp();
 const db = admin.firestore();
 
-// --- 舊有的 onCall 函式，更新為 v2 onCall 語法 ---
+// --- 既有的 onCall 函式 ---
 export const createInviteCode = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
@@ -56,6 +54,7 @@ export const acceptInvite = onCall(async (request) => {
     const familyRef = db.collection("families").doc(familyId);
     transaction.update(familyRef, {
       members: admin.firestore.FieldValue.arrayUnion({ uid: uid, role: "成員" }),
+      memberUIDs: admin.firestore.FieldValue.arrayUnion(uid) // [重要] 確保加入家庭時也更新 memberUIDs
     });
     transaction.update(userRef, {
       familyIDs: admin.firestore.FieldValue.arrayUnion(familyId),
@@ -63,6 +62,54 @@ export const acceptInvite = onCall(async (request) => {
     transaction.delete(inviteRef);
   });
   return { success: true, message: "Successfully joined the family!" };
+});
+
+/**
+ * [新增] 刪除照片手札的 Cloud Function
+ * @param data - 包含 recordId 和 imageUrl 的物件
+ */
+export const deleteSnapshot = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "您必須登入才能執行此操作。");
+  }
+
+  const { recordId, imageUrl } = request.data;
+  if (!recordId || !imageUrl) {
+    throw new HttpsError("invalid-argument", "缺少必要的參數 (recordId, imageUrl)。");
+  }
+
+  const uid = request.auth.uid;
+  const recordRef = db.collection("records").doc(recordId);
+
+  try {
+    const doc = await recordRef.get();
+    if (!doc.exists) {
+      throw new HttpsError("not-found", "找不到指定的紀錄文件。");
+    }
+    const data = doc.data();
+
+    // 權限驗證：確保只有紀錄的建立者才能刪除
+    if (!data || data.creatorId !== uid) {
+      throw new HttpsError("permission-denied", "您沒有權限刪除此紀錄。");
+    }
+
+    // 1. 從 Storage 刪除圖片檔案
+    const bucket = admin.storage().bucket();
+    // 從 URL 中解析出檔案在 Storage 中的路徑
+    const filePath = decodeURIComponent(new URL(imageUrl).pathname.split('/o/')[1].split('?')[0]);
+    await bucket.file(filePath).delete();
+
+    // 2. 從 Firestore 刪除紀錄文件
+    await recordRef.delete();
+
+    return { success: true, message: "照片已成功刪除。" };
+  } catch (error) {
+    functions.logger.error("刪除照片失敗:", error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError("internal", "刪除過程中發生未知錯誤。");
+  }
 });
 
 // --- BMI 計算函式，更新為 v2 onDocumentWritten 語法 ---

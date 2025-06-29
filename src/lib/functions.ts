@@ -3,15 +3,8 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from './firebase';
 
-// 初始化 Functions 服務
-const functions = getFunctions(app);
-
-// 建立一個指向 'createInviteCode' 的可呼叫函式參考
-const createInviteCodeFunction = httpsCallable(functions, 'createInviteCode');
-
-// 建立一個指向 'acceptInvite' 的可呼叫函式參考
-const acceptInviteFunction = httpsCallable(functions, 'acceptInvite');
-
+// 建議明確指定您 Cloud Function 的部署區域
+const functions = getFunctions(app, 'asia-east1');
 
 /**
  * 前端呼叫後端，產生邀請碼
@@ -20,6 +13,7 @@ const acceptInviteFunction = httpsCallable(functions, 'acceptInvite');
  */
 export const generateInviteCode = async (familyId: string): Promise<string> => {
   try {
+    const createInviteCodeFunction = httpsCallable(functions, 'createInviteCode');
     const result = await createInviteCodeFunction({ familyId });
     const data = result.data as { code: string };
     return data.code;
@@ -36,11 +30,29 @@ export const generateInviteCode = async (familyId: string): Promise<string> => {
  */
 export const joinFamilyWithCode = async (inviteCode: string) => {
   try {
+    const acceptInviteFunction = httpsCallable(functions, 'acceptInvite');
     const result = await acceptInviteFunction({ inviteCode });
     return result.data as { success: boolean; message: string; };
   } catch (error) {
     console.error('Error accepting invite:', error);
-    // 將 Firebase 的錯誤訊息傳遞出去，讓 UI 顯示
+    throw error;
+  }
+};
+
+/**
+ * [新增] 前端呼叫後端，刪除照片與紀錄
+ * @param recordId Firestore 文件的 ID
+ * @param imageUrl Storage 圖片的 URL
+ * @returns 成功或失敗的結果
+ */
+export const deleteSnapshotRecord = async (recordId: string, imageUrl: string) => {
+  try {
+    const deleteSnapshotFunction = httpsCallable(functions, 'deleteSnapshot');
+    const result = await deleteSnapshotFunction({ recordId, imageUrl });
+    return result.data as { success: boolean; message: string; };
+  } catch (error) {
+    console.error('刪除照片時發生錯誤:', error);
+    // 將後端傳來的具體錯誤訊息拋出，方便前端顯示
     throw error;
   }
 };
