@@ -11,7 +11,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, DocumentData } from 'firebase/firestore';
 import AddRecordModal from '@/components/AddRecordModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
-import { CreatableRecordType } from '@/lib/records'; // [修改] 從 records.ts 引入共用型別
+import { CreatableRecordType } from '@/lib/records'; // [重要] 引入共用型別
 
 export default function DashboardPage() {
   const { user, userProfile, loading } = useAuth();
@@ -49,7 +49,6 @@ export default function DashboardPage() {
           if (isMounted) {
             console.error("Dashboard snapshot error:", error);
             if (error.name === 'AbortError' || error.code === 'cancelled') {
-              console.log("Snapshot listener was cancelled. This is expected.");
               return;
             }
             setFirestoreError("無法載入記錄。");
@@ -82,6 +81,7 @@ export default function DashboardPage() {
       case 'diaper': return '換尿布';
       case 'sleep': return '睡眠';
       case 'solid-food': return '副食品';
+      case 'snapshot': return '照片手札';
       case 'bmi': return 'BMI';
       case 'measurement':
         switch(record.measurementType) {
@@ -110,11 +110,12 @@ export default function DashboardPage() {
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{userProfile.displayName}的儀表板</h1>
+            {/* [重要] 確保所有導覽連結都在此處 */}
             <div className="flex items-center gap-4 flex-wrap justify-end">
+              <Link href="/photowall" className="text-sm font-medium text-pink-600 hover:underline">照片牆</Link>
+              <Link href="/articles" className="text-sm font-medium text-purple-600 hover:underline">育兒知識庫</Link>
               <Link href="/growth" className="text-sm font-medium text-blue-600 hover:underline">生長曲線</Link>
               <Link href="/milestones" className="text-sm font-medium text-blue-600 hover:underline">發展里程碑</Link>
-              <Link href="/tools/vision-simulator" className="text-sm font-medium text-blue-600 hover:underline">視力模擬器</Link>
-              <Link href="/tools/milk-estimator" className="text-sm font-medium text-blue-600 hover:underline">奶量估算器</Link>
               <Link href="/baby/edit" className="text-sm font-medium text-blue-600 hover:underline">寶寶資料</Link>
               <button onClick={signOutUser} className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600">登出</button>
             </div>

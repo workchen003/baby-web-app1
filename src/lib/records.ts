@@ -24,7 +24,7 @@ import { UserProfile } from '@/contexts/AuthContext';
 // [新增] 將此共用型別定義在此處並匯出，作為唯一的真實來源
 export type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot';
 
-// [修改] 更新 RecordData 介面以包含照片牆的相關欄位
+// [修改] RecordData 介面，為 'snapshot' 新增了所有需要的欄位
 export interface RecordData extends DocumentData {
   familyId: string;
   babyId: string;
@@ -55,50 +55,13 @@ export interface RecordData extends DocumentData {
   
   // For snapshot
   imageUrl?: string;
+  tags?: string[];
+  year?: number;
+  month?: number;
 }
 
 /**
- * [新增] 獲取照片牆的紀錄，並支援分頁
- * @param familyId - 家庭 ID
- * @param options - 包含 perPage 和 lastDoc 的分頁參數
- * @returns 回傳包含照片紀錄和最後一個文件快照的物件
- */
-export const getSnapshots = async (
-  familyId: string, 
-  options: { 
-    perPage?: number; 
-    lastDoc?: QueryDocumentSnapshot<DocumentData>; 
-  } = {}
-) => {
-  const perPage = options.perPage || 20;
-  const recordsRef = collection(db, "records");
-  
-  // 將共用的查詢條件放在一個基礎陣列中
-  const baseConstraints: QueryConstraint[] = [
-    where("familyId", "==", familyId),
-    where("type", "==", "snapshot"),
-    orderBy("timestamp", "desc"),
-    limit(perPage)
-  ];
-
-  // 根據是否有 lastDoc，來建立不同查詢指令，以解決型別問題
-  const q = options.lastDoc 
-    ? query(recordsRef, ...baseConstraints, startAfter(options.lastDoc))
-    : query(recordsRef, ...baseConstraints);
-
-  const querySnapshot = await getDocs(q);
-  const snapshots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  
-  return {
-    snapshots,
-    lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1],
-  };
-};
-
-/**
- * 新增一筆記錄到 Firestore
- * @param recordData 包含要新增欄位的資料物件
- * @param userProfile 當前登入者的個人資料，用於獲取名稱
+ * [修改] 新增一筆記錄到 Firestore，並修復了 serverTimestamp 的型別問題
  */
 export const addRecord = async (recordData: Partial<RecordData>, userProfile: UserProfile | null) => {
   if (!recordData.familyId || !recordData.creatorId) {
@@ -109,13 +72,20 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
   }
 
   try {
-    // 如果傳入的資料沒有 timestamp，才使用伺服器當前時間
+    // [修改] 移除對 dataToSave 的型別註記，讓 TypeScript 自動推斷，以解決 FieldValue 的型別衝突
     const dataToSave = {
       ...recordData,
-      babyId: 'baby_01', // 暫時寫死
+      babyId: 'baby_01',
       creatorName: userProfile.displayName,
       timestamp: recordData.timestamp || serverTimestamp(),
     };
+    
+    // [新增] 如果是 snapshot 類型，自動從 timestamp 中提取並儲存年份和月份
+    if (recordData.type === 'snapshot' && dataToSave.timestamp instanceof Timestamp) {
+        const date = dataToSave.timestamp.toDate();
+        dataToSave.year = date.getFullYear();
+        dataToSave.month = date.getMonth() + 1; // getMonth() 回傳 0-11，所以要加 1
+    }
 
     const docRef = await addDoc(collection(db, 'records'), dataToSave);
     console.log('Document written with ID: ', docRef.id);
@@ -128,17 +98,69 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
 
 
 /**
- * 更新一筆既有的記錄
- * @param recordId 要更新的記錄文件的 ID
- * @param updatedData 包含要更新欄位的物件
+ * [修改] 獲取照片牆的紀錄，包含篩選和分頁功能，並修正了查詢建立方式
  */
+export const getSnapshots = async (
+  familyId: string, 
+  options: { 
+    perPage?: number; 
+    lastDoc?: QueryDocumentSnapshot<DocumentData>;
+    filter?: {
+      year?: number;
+      month?: number;
+      tag?: string;
+    }
+  } = {}
+) => {
+  const perPage = options.perPage || 20;
+  const recordsRef = collection(db, "records");
+  
+  // [修改] 將共用的查詢條件放在一個基礎陣列中
+  const baseConstraints: QueryConstraint[] = [
+    where("familyId", "==", familyId),
+    where("type", "==", "snapshot"),
+  ];
+
+  // [新增] 根據篩選條件動態加入 where 子句
+  if (options.filter) {
+    if (options.filter.year) {
+      baseConstraints.push(where("year", "==", options.filter.year));
+    }
+    if (options.filter.month) {
+      baseConstraints.push(where("month", "==", options.filter.month));
+    }
+    if (options.filter.tag && options.filter.tag.trim() !== '') {
+      baseConstraints.push(where("tags", "array-contains", options.filter.tag.trim()));
+    }
+  }
+  
+  // 排序和分頁條件要放在篩選條件之後
+  baseConstraints.push(orderBy("timestamp", "desc"));
+  baseConstraints.push(limit(perPage));
+
+  if (options.lastDoc) {
+    baseConstraints.push(startAfter(options.lastDoc));
+  }
+
+  const q = query(recordsRef, ...baseConstraints);
+
+  const querySnapshot = await getDocs(q);
+  const snapshots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  return {
+    snapshots,
+    lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1],
+  };
+};
+
+// --- 以下為既有函式 ---
+
 export const updateRecord = async (recordId: string, updatedData: Partial<RecordData>) => {
   if (!recordId) {
     throw new Error('Record ID is required for updating.');
   }
   const recordRef = doc(db, 'records', recordId);
   try {
-    // 直接使用傳入的 updatedData，它可能包含新的 timestamp
     await updateDoc(recordRef, updatedData);
     console.log('Document updated with ID: ', recordId);
   } catch (e) {
@@ -147,10 +169,6 @@ export const updateRecord = async (recordId: string, updatedData: Partial<Record
   }
 };
 
-/**
- * 刪除一筆記錄
- * @param recordId 要刪除的記錄文件的 ID
- */
 export const deleteRecord = async (recordId: string) => {
   if (!recordId) {
     throw new Error('Record ID is required for deletion.');
@@ -165,12 +183,6 @@ export const deleteRecord = async (recordId: string) => {
   }
 };
 
-/**
- * 獲取指定寶寶的所有測量記錄
- * @param familyId 家庭 ID
- * @param babyId 寶寶 ID
- * @returns 回傳包含所有測量記錄的陣列
- */
 export const getMeasurementRecords = async (familyId: string, babyId: string) => {
   const recordsRef = collection(db, 'records');
   const q = query(
@@ -178,7 +190,7 @@ export const getMeasurementRecords = async (familyId: string, babyId: string) =>
     where('familyId', '==', familyId),
     where('babyId', '==', babyId),
     where('type', '==', 'measurement'),
-    orderBy('timestamp', 'asc') // 按時間升序排列
+    orderBy('timestamp', 'asc')
   );
 
   const querySnapshot = await getDocs(q);

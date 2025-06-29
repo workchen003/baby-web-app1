@@ -10,10 +10,6 @@ import AddRecordModal from '@/components/AddRecordModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import { CreatableRecordType } from '@/lib/records'; // [修改] 從 records.ts 引入共用型別
 
-// [刪除] 不再需要在此處重複定義
-// type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
-
-
 export default function TimelinePage() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
@@ -23,10 +19,7 @@ export default function TimelinePage() {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // [修改] 確保此處使用的型別是從外部引入的新型別
   const [modalRecordType, setModalRecordType] = useState<CreatableRecordType>('feeding');
-
-  // 編輯模式用的 State
   const [editingRecord, setEditingRecord] = useState<DocumentData | null>(null);
 
   useEffect(() => {
@@ -55,6 +48,8 @@ export default function TimelinePage() {
         }
       );
       return () => unsubscribe();
+    } else if (!loading) {
+      router.replace('/onboarding/create-family');
     }
   }, [user, userProfile, loading, router]);
 
@@ -67,10 +62,10 @@ export default function TimelinePage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingRecord(null);
-  }
+  };
 
-  if (loading || !userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0) {
-    return <div className="flex min-h-screen items-center justify-center">載入中或正在重新導向...</div>;
+  if (loading || !userProfile) {
+    return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
   }
 
   const getRecordTitle = (record: DocumentData) => {
@@ -79,6 +74,7 @@ export default function TimelinePage() {
       case 'diaper': return '換尿布';
       case 'sleep': return '睡眠';
       case 'solid-food': return '副食品';
+      case 'snapshot': return '照片手札'; // [修改] 加入 snapshot 的標題
       case 'bmi': return 'BMI';
       case 'measurement':
         switch(record.measurementType) {
@@ -89,7 +85,7 @@ export default function TimelinePage() {
         }
       default: return '紀錄';
     }
-  }
+  };
 
   const getUnit = (record: DocumentData) => {
     if (record.type === 'measurement') {
@@ -99,7 +95,7 @@ export default function TimelinePage() {
         return 'ml';
     }
     return '';
-  }
+  };
 
   return (
     <>
@@ -113,7 +109,7 @@ export default function TimelinePage() {
         
         <main className="w-full container mx-auto flex-grow py-8 px-4 sm:px-6 lg:px-8">
           <div className="bg-white rounded-lg shadow p-4 space-y-3">
-            {isRecordsLoading ? <p>正在載入記錄...</p> : firestoreError ? <p className="text-red-500">{firestoreError}</p> : allRecords.length > 0 ? (
+            {isRecordsLoading ? <p className="text-center p-8">正在載入記錄...</p> : firestoreError ? <p className="text-red-500 text-center p-8">{firestoreError}</p> : allRecords.length > 0 ? (
               allRecords.map((record) => (
                 <div key={record.id} className="p-4 border-b last:border-b-0 flex justify-between items-start">
                   <div>
@@ -129,7 +125,7 @@ export default function TimelinePage() {
                     <button 
                       onClick={() => handleOpenModal(record.type, record)}
                       className="text-sm text-blue-600 hover:underline"
-                      disabled={record.type === 'bmi'}
+                      disabled={record.type === 'bmi' || record.type === 'snapshot'} // 照片手札通常只有新增和刪除
                     >
                       編輯
                     </button>
