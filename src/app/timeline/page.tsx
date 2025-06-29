@@ -8,22 +8,22 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
 import AddRecordModal from '@/components/AddRecordModal';
 import FloatingActionButton from '@/components/FloatingActionButton';
+import { CreatableRecordType } from '@/lib/records'; // [修改] 從 records.ts 引入共用型別
 
-// --- 核心修正：定義一個「可手動建立」的紀錄類型，並排除 'bmi' ---
-type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
+// [刪除] 不再需要在此處重複定義
+// type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
 
 
-// --- 核心修正：元件名稱改為 TimelinePage ---
 export default function TimelinePage() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
-  // --- 核心修正：變數名稱更符合語意 ---
   const [allRecords, setAllRecords] = useState<DocumentData[]>([]);
   const [isRecordsLoading, setRecordsLoading] = useState(true);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // [修改] 確保此處使用的型別是從外部引入的新型別
   const [modalRecordType, setModalRecordType] = useState<CreatableRecordType>('feeding');
 
   // 編輯模式用的 State
@@ -35,14 +35,8 @@ export default function TimelinePage() {
       router.replace('/');
       return;
     }
-    if (userProfile) {
-      if (!userProfile.familyIDs || userProfile.familyIDs.length === 0) {
-        router.replace('/onboarding/create-family');
-        return;
-      }
-      
+    if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const currentFamilyId = userProfile.familyIDs[0];
-      // --- 核心修正：移除 limit(5)，以讀取所有紀錄 ---
       const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"));
       
       const unsubscribe = onSnapshot(q, 
@@ -112,7 +106,6 @@ export default function TimelinePage() {
       <div className="flex min-h-screen flex-col w-full bg-gray-50">
         <header className="w-full bg-white shadow-sm flex-shrink-0">
           <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
-            {/* --- 核心修正：標題更新 --- */}
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">完整時間軸</h1>
             <Link href="/dashboard" className="text-sm font-medium text-blue-600 hover:underline">&larr; 返回儀表板</Link>
           </div>
@@ -136,7 +129,6 @@ export default function TimelinePage() {
                     <button 
                       onClick={() => handleOpenModal(record.type, record)}
                       className="text-sm text-blue-600 hover:underline"
-                      // BMI 是自動計算的，不應該能被編輯
                       disabled={record.type === 'bmi'}
                     >
                       編輯
