@@ -1,9 +1,11 @@
+// src/components/FloatingActionButton.tsx
+
 'use client';
 
 import { useState } from 'react';
 
-// --- 核心修正：直接在此處定義元件只會用到的、可手動建立的紀錄類型 ---
-type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement';
+// [修改] 新增 'snapshot' 型別，讓按鈕可以觸發照片上傳
+type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot';
 
 // 定義元件的 Props 型別
 interface FloatingActionButtonProps {
@@ -22,6 +24,14 @@ export default function FloatingActionButton({ onAddRecord }: FloatingActionButt
 
   return (
     <div className={`floating-button-group ${isOpen ? 'open' : ''}`}>
+      {/* [新增] 上傳照片按鈕 */}
+      <button 
+        onClick={() => handleSubButtonClick('snapshot')} 
+        className="sub-button flex items-center justify-center w-12 h-12 rounded-full bg-pink-500 text-white shadow-lg hover:bg-pink-600" 
+        title="新增照片手札"
+      >
+        📷
+      </button>
       {/* 子按鈕: 睡眠 */}
       <button onClick={() => handleSubButtonClick('sleep')} className="sub-button flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500 text-white shadow-lg hover:bg-indigo-600" title="新增睡眠記錄">
         😴

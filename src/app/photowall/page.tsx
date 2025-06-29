@@ -1,6 +1,5 @@
-// [修正] src/app/photowall/page.tsx
+// src/app/photowall/page.tsx
 
-// [修正] 將 'use client' 移至檔案的最頂端
 'use client'; 
 
 import Link from 'next/link';
@@ -12,40 +11,55 @@ import { DocumentData, Timestamp } from 'firebase/firestore';
 
 // 建立一個卡片元件來顯示單張照片
 function PhotoCard({ record }: { record: DocumentData }) {
-  // 假設縮圖 URL 是在原始 URL 檔名後加上後綴
-  // 例如：image.png -> image_400x400.png
-  const getThumbnailUrl = (url: string) => {
-    if (!url) return ''; // 如果沒有 URL，返回空字串
-    const parts = url.split('.');
-    if (parts.length < 2) return url; // 如果 URL 沒有副檔名，直接返回原圖
-    const extension = parts.pop();
-    const name = parts.join('.');
-    return `${name}_400x400.${extension}`;
+  // 根據 Firebase Resize Image 擴充功能的命名規則來產生縮圖 URL
+  const getThumbnailUrl = (url: string | undefined): string => {
+    if (!url) return '/placeholder.png'; // 提供一個預設圖片路徑
+    
+    try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/');
+        const fileName = pathParts.pop() || '';
+        const fileNameParts = fileName.split('.');
+        
+        if (fileNameParts.length < 2) return url;
+        
+        const extension = fileNameParts.pop();
+        const name = fileNameParts.join('.');
+        
+        // 組合新的檔名，例如：image.jpeg -> image_400x400.jpeg
+        const newFileName = `${name}_400x400.${extension}`;
+        pathParts.push(newFileName);
+        urlObj.pathname = pathParts.join('/');
+        return urlObj.toString();
+    } catch (e) {
+        console.error("無效的圖片 URL:", url);
+        return '/placeholder.png'; // URL 格式錯誤時也返回預設圖片
+    }
   };
 
   const thumbnailUrl = getThumbnailUrl(record.imageUrl);
 
-  // 如果沒有有效的縮圖 URL，可以選擇不渲染此卡片或顯示預留位置
-  if (!thumbnailUrl) return null;
-
   return (
+    // 'break-inside-avoid' class 可以防止元素在多欄佈局中被切斷
     <div className="bg-white rounded-lg shadow-md overflow-hidden break-inside-avoid mb-4">
-      <div className="relative w-full aspect-square bg-gray-100">
+      <div className="relative w-full aspect-[4/5] bg-gray-100"> {/* 調整圖片比例 */}
         <Image
           src={thumbnailUrl}
           alt={record.notes || '寶寶的照片'}
           fill
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
           className="object-cover"
           loading="lazy"
         />
       </div>
-      <div className="p-4">
-        <p className="text-sm text-gray-600">{record.notes}</p>
-        <p className="text-xs text-gray-400 mt-2">
-          {new Date((record.timestamp as Timestamp).toDate()).toLocaleDateString('zh-TW')}
-        </p>
-      </div>
+      {record.notes && (
+        <div className="p-4">
+          <p className="text-sm text-gray-700">{record.notes}</p>
+          <p className="text-xs text-gray-400 mt-2">
+            {new Date((record.timestamp as Timestamp).toDate()).toLocaleDateString('zh-TW')}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -62,12 +76,9 @@ export default function PhotoWallPage() {
       getSnapshots(familyId)
         .then((data: DocumentData[]) => {
           setSnapshots(data);
-          setIsLoading(false);
         })
-        .catch(err => {
-            console.error(err);
-            setIsLoading(false);
-        });
+        .catch(console.error)
+        .finally(() => setIsLoading(false));
     } else if (!authLoading) {
       setIsLoading(false);
     }
@@ -81,11 +92,12 @@ export default function PhotoWallPage() {
           <p className="mt-2 text-lg text-gray-600">紀錄寶寶的每一個珍貴瞬間</p>
           <Link href="/dashboard" className="text-blue-600 hover:underline mt-4 inline-block">&larr; 返回儀表板</Link>
         </header>
-        
+
         {isLoading ? (
-          <p className="text-center text-gray-500">正在載入照片...</p>
+          <p className="text-center text-gray-500 py-16">正在載入照片...</p>
         ) : snapshots.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          // 使用 CSS Columns 實現簡單的瀑布流佈局
+          <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
             {snapshots.map(record => (
               <PhotoCard key={record.id} record={record} />
             ))}
@@ -93,10 +105,9 @@ export default function PhotoWallPage() {
         ) : (
           <div className="text-center py-16">
             <p className="text-gray-500">目前還沒有任何照片紀錄。</p>
-            <p className="text-sm text-gray-400 mt-2">（上傳功能將在下一階段實作）</p>
+            <p className="text-sm text-gray-400 mt-2">點擊右下角的「+」按鈕，新增第一張照片吧！</p>
           </div>
         )}
-        
       </div>
     </div>
   );
