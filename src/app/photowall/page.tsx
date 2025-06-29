@@ -1,45 +1,41 @@
-// src/app/photowall/page.tsx
-
 'use client'; 
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSnapshots } from '@/lib/records';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DocumentData, Timestamp, QueryDocumentSnapshot } from 'firebase/firestore';
 import { useInView } from 'react-intersection-observer';
 import Lightbox from '@/components/Lightbox';
 
-// PhotoCard 元件
-function PhotoCard({ record, onClick }: { record: DocumentData, onClick: (imageUrl: string) => void }) {
+function PhotoCard({ record, onClick, priority = false }: { record: DocumentData, onClick: (imageUrl: string) => void, priority?: boolean }) {
+  
+  // [修改] 更新函式，強制將縮圖的副檔名指向 .jpeg
   const getThumbnailUrl = (url: string | undefined): string => {
-    if (!url) return '';
-    try {
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        const fileName = pathParts.pop() || '';
-        const fileNameParts = fileName.split('.');
-        if (fileNameParts.length < 2) return url;
-        const extension = fileNameParts.pop();
-        const name = fileNameParts.join('.');
-        const newFileName = `${name}_400x400.${extension}`;
-        pathParts.push(newFileName);
-        urlObj.pathname = pathParts.join('/');
-        return urlObj.toString();
-    } catch (e) {
-        console.error("無效的圖片 URL:", url);
-        return '';
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+      return '/placeholder.png'; 
     }
+    
+    // 尋找最後一個點，以分割檔名和副檔名
+    const lastDotIndex = url.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      return url; // 如果沒有副檔名，直接返回原 URL
+    }
+    
+    const name = url.substring(0, lastDotIndex);
+    
+    // 因為擴充功能會將圖片轉檔，所以我們固定請求 .jpeg 格式的縮圖
+    return `${name}_400x400.jpeg`;
   };
 
   const thumbnailUrl = getThumbnailUrl(record.imageUrl);
-  if (!thumbnailUrl) return null;
+  const originalUrl = record.imageUrl || '';
 
   return (
     <div 
       className="bg-white rounded-lg shadow-md overflow-hidden break-inside-avoid mb-4 cursor-pointer"
-      onClick={() => onClick(record.imageUrl)}
+      onClick={() => onClick(originalUrl)}
     >
       <div className="relative w-full aspect-[4/5] bg-gray-100">
         <Image
@@ -49,6 +45,7 @@ function PhotoCard({ record, onClick }: { record: DocumentData, onClick: (imageU
           sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
           className="object-cover"
           loading="lazy"
+          priority={priority}
         />
       </div>
       {record.notes && (
@@ -68,44 +65,47 @@ export default function PhotoWallPage() {
   const { userProfile, loading: authLoading } = useAuth();
   const [snapshots, setSnapshots] = useState<DocumentData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | undefined>(undefined);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const { ref, inView } = useInView({ threshold: 0.5 });
+
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   
   const handlePhotoClick = (imageUrl: string) => {
-    setLightboxImage(imageUrl);
+    if(imageUrl) setLightboxImage(imageUrl);
   };
 
-  const loadMoreSnapshots = async () => {
-    if (!hasMore || isLoadingMore || !userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0) return;
-    
+  const loadMoreSnapshots = useCallback(async () => {
+    if (!hasMore || isLoadingMore || !userProfile?.familyIDs?.[0]) return;
     setIsLoadingMore(true);
     
     const familyId = userProfile.familyIDs[0];
-    const result = await getSnapshots(familyId, { lastDoc: lastVisible });
-    
-    setSnapshots(prev => [...prev, ...result.snapshots]);
-    setLastVisible(result.lastVisible);
-    if (!result.lastVisible) {
-      setHasMore(false);
+    try {
+      const result = await getSnapshots(familyId, { lastDoc: lastVisible });
+      
+      setSnapshots(prev => [...prev, ...result.snapshots]);
+      setLastVisible(result.lastVisible);
+      if (!result.lastVisible) {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error("無法載入更多照片:", error);
+    } finally {
+      setIsLoadingMore(false);
     }
-    setIsLoadingMore(false);
-  };
+  }, [hasMore, isLoadingMore, userProfile, lastVisible]);
   
   // 初始載入
   useEffect(() => {
     if (!authLoading && userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
-      const familyId = userProfile.familyIDs[0];
-      getSnapshots(familyId)
-        // [修改] 正確處理回傳的物件，而不是陣列
-        .then((result) => {
+      setIsLoading(true);
+      getSnapshots(userProfile.familyIDs[0])
+        .then(result => {
           setSnapshots(result.snapshots);
           setLastVisible(result.lastVisible);
-          if (!result.lastVisible) {
-            setHasMore(false);
-          }
+          if (!result.lastVisible) setHasMore(false);
         })
         .catch(console.error)
         .finally(() => setIsLoading(false));
@@ -114,12 +114,12 @@ export default function PhotoWallPage() {
     }
   }, [userProfile, authLoading]);
 
-  // 偵測滾動到底部並載入更多
+  // 偵測滾動到底部
   useEffect(() => {
     if (inView && !isLoading) {
       loadMoreSnapshots();
     }
-  }, [inView, isLoading]); // [修改] 加入 isLoading 作為依賴，避免初始載入時觸發
+  }, [inView, isLoading, loadMoreSnapshots]);
 
   return (
     <>
@@ -140,7 +140,6 @@ export default function PhotoWallPage() {
                   <PhotoCard key={record.id} record={record} onClick={handlePhotoClick} />
                 ))}
               </div>
-              
               {hasMore && (
                 <div ref={ref} className="text-center p-8">
                   <p className="text-gray-500">正在載入更多...</p>

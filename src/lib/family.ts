@@ -1,4 +1,4 @@
-// src/lib/family.ts
+// [修改] src/lib/family.ts
 
 import { db } from './firebase';
 import {
@@ -23,10 +23,16 @@ export const createFamily = async (
   const batch = writeBatch(db);
 
   const familyRef = doc(collection(db, 'families'));
+  
+  // [修改] 在建立家庭文件時，同時儲存一個 memberUIDs 陣列
+  // 這將大大簡化安全規則的撰寫
   batch.set(familyRef, {
     familyName: familyName,
     creatorID: user.uid,
+    // 儲存包含詳細資訊的成員物件
     members: [{ uid: user.uid, role: role }],
+    // 同時也儲存一個只包含 UID 的陣列，專門給安全規則使用
+    memberUIDs: [user.uid], 
     babyIDs: [],
   });
 

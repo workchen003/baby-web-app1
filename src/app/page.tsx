@@ -81,7 +81,7 @@ const AppHeader = () => {
         <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm shadow-sm flex-shrink-0">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <Link href="/" className="flex items-center">
-                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={40} priority />
+                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={40} priority className="w-auto h-auto" />
                 </Link>
                 <div className="flex items-center gap-4 md:gap-6">
                     <nav className="hidden items-center gap-6 md:flex">
