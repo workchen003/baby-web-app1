@@ -1,21 +1,19 @@
-// [新增] src/app/photowall/page.tsx
+// [修正] src/app/photowall/page.tsx
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSnapshots } from '@/lib/records';
-import { useAuth } from '@/contexts/AuthContext'; // 我們需要在客戶端元件中使用
-'use client'; // 因為 useAuth 是 Hook，所以此頁面需要是客戶端元件
+import { useAuth } from '@/contexts/AuthContext';
+'use client'; 
 
 import { useEffect, useState } from 'react';
 import { DocumentData, Timestamp } from 'firebase/firestore';
 
-// 建立一個卡片元件來顯示單張照片
 function PhotoCard({ record }: { record: DocumentData }) {
-  // 假設縮圖 URL 是在原始 URL 檔名後加上後綴
-  // 例如：image.png -> image_400x400.png
   const getThumbnailUrl = (url: string) => {
+    if (!url) return ''; // 如果沒有 URL，返回空字串
     const parts = url.split('.');
-    if (parts.length < 2) return url; // 如果 URL 沒有副檔名，直接返回原圖
+    if (parts.length < 2) return url;
     const extension = parts.pop();
     const name = parts.join('.');
     return `${name}_400x400.${extension}`;
@@ -23,16 +21,19 @@ function PhotoCard({ record }: { record: DocumentData }) {
 
   const thumbnailUrl = getThumbnailUrl(record.imageUrl);
 
+  // 如果沒有有效的縮圖 URL，可以選擇不渲染此卡片或顯示預留位置
+  if (!thumbnailUrl) return null;
+
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden break-inside-avoid mb-4">
-      <div className="relative w-full aspect-square">
+      <div className="relative w-full aspect-square bg-gray-100">
         <Image
           src={thumbnailUrl}
           alt={record.notes || '寶寶的照片'}
           fill
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           className="object-cover"
-          loading="lazy" // Next.js Image 內建懶載入
+          loading="lazy"
         />
       </div>
       <div className="p-4">
@@ -52,14 +53,21 @@ export default function PhotoWallPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!authLoading && userProfile && userProfile.familyIDs?.length > 0) {
+    // [修正] 增加更嚴謹的檢查，確保 userProfile 和 familyIDs 都存在且有內容
+    if (!authLoading && userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const familyId = userProfile.familyIDs[0];
       getSnapshots(familyId)
-        .then(data => {
+        .then((data: DocumentData[]) => { // [修正] 為 data 參數加上明確的 DocumentData[] 型別
           setSnapshots(data);
           setIsLoading(false);
         })
-        .catch(console.error);
+        .catch(err => {
+            console.error(err);
+            setIsLoading(false);
+        });
+    } else if (!authLoading) {
+      // 如果 auth 已載入完畢，但仍沒有 profile 或 familyID，也應停止載入狀態
+      setIsLoading(false);
     }
   }, [userProfile, authLoading]);
 
@@ -72,12 +80,9 @@ export default function PhotoWallPage() {
           <Link href="/dashboard" className="text-blue-600 hover:underline mt-4 inline-block">&larr; 返回儀表板</Link>
         </header>
         
-        {/* 未來篩選器會放在這裡 */}
-
         {isLoading ? (
           <p className="text-center text-gray-500">正在載入照片...</p>
         ) : snapshots.length > 0 ? (
-          // 簡單的 CSS Grid 佈局，為未來的瀑布流做準備
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {snapshots.map(record => (
               <PhotoCard key={record.id} record={record} />
@@ -89,8 +94,6 @@ export default function PhotoWallPage() {
             <p className="text-sm text-gray-400 mt-2">（上傳功能將在下一階段實作）</p>
           </div>
         )}
-        
-        {/* 未來無限滾動會監測這個元素 */}
       </div>
     </div>
   );
