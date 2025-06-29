@@ -1,4 +1,6 @@
-# pnpm-workspace.yaml
 packages:
-  - '.'
-  - 'functions'
+  - .
+  - functions
+
+ignoredBuiltDependencies:
+  - esbuild
