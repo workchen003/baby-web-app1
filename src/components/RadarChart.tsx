@@ -30,16 +30,12 @@ export default function RadarChart({ achievedMilestones }: RadarChartProps) {
   // 使用 useMemo 處理資料，計算每個分類的達成數量
   const data = useMemo((): RadarData[] => {
     const typedMilestonesData: MilestoneData = milestonesData;
-    
-    // 我們只取參考圖中的四個主要維度
     const targetCategories = ["粗動作", "精細動作與適應力", "語言", "身體處理能力與社交"];
-    
-    // 簡化顯示名稱
     const axisMapping: { [key: string]: string } = {
         "粗動作": "粗大動作",
         "精細動作與適應力": "精細動作",
-        "語言": "語言與溝通",
-        "身體處理能力與社交": "社會與認知",
+        "語言": "語言溝通", // 稍微縮短
+        "身體處理能力與社交": "社會認知", // 稍微縮短
     };
 
     return typedMilestonesData.categories
@@ -60,23 +56,23 @@ export default function RadarChart({ achievedMilestones }: RadarChartProps) {
     if (!d3Container.current || data.length === 0) return;
 
     const svg = d3.select(d3Container.current);
-    svg.selectAll("*").remove(); // 清空舊圖
+    svg.selectAll("*").remove(); 
 
     const width = 280;
     const height = 280;
-    const margin = { top: 40, right: 40, bottom: 40, left: 40 };
-    const radius = Math.min(width, height) / 2 - 10;
+    // 增加左右邊距以容納文字
+    const margin = { top: 50, right: 80, bottom: 50, left: 80 };
+    const radius = Math.min(width, height) / 2;
     const g = svg.attr("width", width + margin.left + margin.right)
                  .attr("height", height + margin.top + margin.bottom)
                  .append("g")
                  .attr("transform", `translate(${width/2 + margin.left}, ${height/2 + margin.top})`);
     
-    const maxValue = 8; // 雷達圖的最大值
+    const maxValue = 8;
     const allAxis = data.map(i => i.axis);
     const total = allAxis.length;
     const angleSlice = Math.PI * 2 / total;
 
-    // --- 繪製雷達圖背景格線 ---
     const rScale = d3.scaleLinear().range([0, radius]).domain([0, maxValue]);
     const axisGrid = g.append("g").attr("class", "axisWrapper");
     
@@ -92,7 +88,6 @@ export default function RadarChart({ achievedMilestones }: RadarChartProps) {
        .style("stroke", "#CDCDCD")
        .style("fill-opacity", 0.1);
 
-    // --- 繪製從中心點出發的軸線 ---
     const axis = axisGrid.selectAll(".axis")
       .data(allAxis)
       .enter()
@@ -100,25 +95,27 @@ export default function RadarChart({ achievedMilestones }: RadarChartProps) {
       .attr("class", "axis");
 
     axis.append("line")
-      .attr("x1", 0)
-      .attr("y1", 0)
+      .attr("x1", 0).attr("y1", 0)
       .attr("x2", (_, i) => rScale(maxValue * 1.1) * Math.cos(angleSlice * i - Math.PI / 2))
       .attr("y2", (_, i) => rScale(maxValue * 1.1) * Math.sin(angleSlice * i - Math.PI / 2))
       .attr("class", "line")
-      .style("stroke", "white")
-      .style("stroke-width", "2px");
+      .style("stroke", "white").style("stroke-width", "2px");
 
-    // --- 繪製軸線標籤 ---
+    // *** 修改：動態調整文字對齊方式並加入統計數字 ***
     axis.append("text")
       .attr("class", "legend")
       .style("font-size", "12px")
-      .attr("text-anchor", "middle")
       .attr("dy", "0.35em")
-      .attr("x", (_, i) => rScale(maxValue * 1.25) * Math.cos(angleSlice * i - Math.PI / 2))
-      .attr("y", (_, i) => rScale(maxValue * 1.25) * Math.sin(angleSlice * i - Math.PI / 2))
-      .text(d => d);
+      .attr("x", (d, i) => rScale(maxValue * 1.2) * Math.cos(angleSlice * i - Math.PI / 2))
+      .attr("y", (d, i) => rScale(maxValue * 1.2) * Math.sin(angleSlice * i - Math.PI / 2))
+      .text((d, i) => `${d} (${data[i].value}/${data[i].total})`)
+      .style("text-anchor", (d, i) => {
+        const angle = angleSlice * i - Math.PI / 2;
+        if (angle < -Math.PI/2 + 0.1 && angle > -Math.PI*1.5 - 0.1) return "end";
+        if (angle > Math.PI/2 - 0.1) return "end";
+        return "start";
+      });
 
-    // --- 繪製資料區域 ---
     const radarLine = d3.lineRadial<{axis: string, value: number}>()
       .radius(d => rScale(d.value))
       .angle((_, i) => i * angleSlice);
@@ -126,12 +123,10 @@ export default function RadarChart({ achievedMilestones }: RadarChartProps) {
     g.append("path")
       .datum(data)
       .attr("d", radarLine)
-      .style("fill", "#3b82f6") // 藍色
-      .style("fill-opacity", 0.5)
-      .style("stroke", "#1d4ed8") // 深藍色
-      .style("stroke-width", 2);
+      .style("fill", "#3b82f6").style("fill-opacity", 0.5)
+      .style("stroke", "#1d4ed8").style("stroke-width", 2);
 
-  }, [data]); // 當資料變更時重新繪製
+  }, [data]);
 
-  return <svg ref={d3Container} />;
+  return <svg ref={d3Container} style={{maxWidth: '100%', height: 'auto'}} viewBox={`0 0 ${280 + 160} ${280 + 100}`} />;
 }

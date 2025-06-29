@@ -1,3 +1,4 @@
+// src/app/timeline/page.tsx
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -5,141 +6,127 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
-import AddRecordModal from '@/components/AddRecordModal';
-import FloatingActionButton from '@/components/FloatingActionButton';
-import { CreatableRecordType } from '@/lib/records'; // [修改] 從 records.ts 引入共用型別
+import { collection, query, where, orderBy, onSnapshot, DocumentData, Timestamp, deleteDoc, doc } from 'firebase/firestore';
+import { Milk, Baby, Soup, Ruler, Sun, Moon, Droplets, Syringe } from 'lucide-react';
+
+type FilterType = 'all' | 'feeding' | 'diaper' | 'solid-food' | 'measurement' | 'other';
+
+const recordIcons: { [key: string]: React.ReactNode } = {
+    feeding: <Milk className="h-5 w-5 text-blue-500" />,
+    diaper: <Baby className="h-5 w-5 text-green-500" />,
+    'solid-food': <Soup className="h-5 w-5 text-orange-500" />,
+    measurement: <Ruler className="h-5 w-5 text-purple-500" />,
+    sleep: <Moon className="h-5 w-5 text-indigo-500" />,
+    vitamin: <Sun className="h-5 w-5 text-yellow-500" />, // 假設
+    medicine: <Syringe className="h-5 w-5 text-red-500" />, // 假設
+    default: <Droplets className="h-5 w-5 text-gray-500" />,
+};
+
+const filterButtons: { type: FilterType, label: string, icon: React.ReactNode }[] = [
+    { type: 'all', label: '全部', icon: <span className="text-xs">All</span> },
+    { type: 'feeding', label: '餵奶', icon: recordIcons.feeding },
+    { type: 'diaper', label: '尿布', icon: recordIcons.diaper },
+    { type: 'solid-food', label: '副食品', icon: recordIcons['solid-food'] },
+    { type: 'measurement', label: '生長', icon: recordIcons.measurement },
+    { type: 'other', label: '其他', icon: <span className="text-xs">...</span> },
+];
 
 export default function TimelinePage() {
-  const { user, userProfile, loading } = useAuth();
-  const router = useRouter();
+    const { user, userProfile, loading } = useAuth();
+    const router = useRouter();
 
-  const [allRecords, setAllRecords] = useState<DocumentData[]>([]);
-  const [isRecordsLoading, setRecordsLoading] = useState(true);
-  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+    const [allRecords, setAllRecords] = useState<DocumentData[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [filter, setFilter] = useState<FilterType>('all');
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalRecordType, setModalRecordType] = useState<CreatableRecordType>('feeding');
-  const [editingRecord, setEditingRecord] = useState<DocumentData | null>(null);
-
-  useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      router.replace('/');
-      return;
-    }
-    if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
-      const currentFamilyId = userProfile.familyIDs[0];
-      const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"));
-      
-      const unsubscribe = onSnapshot(q, 
-        (querySnapshot) => {
-          const records = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setAllRecords(records);
-          setFirestoreError(null);
-          setRecordsLoading(false);
-        },
-        (error) => {
-          console.error("Timeline snapshot error:", error);
-          if (error.code !== 'cancelled') {
-            setFirestoreError("無法載入記錄。");
-          }
-          setRecordsLoading(false);
+    useEffect(() => {
+        if (loading) return;
+        if (!user || !userProfile?.familyIDs?.[0]) {
+            router.replace('/');
+            return;
         }
-      );
-      return () => unsubscribe();
-    } else if (!loading) {
-      router.replace('/onboarding/create-family');
-    }
-  }, [user, userProfile, loading, router]);
 
-  const handleOpenModal = (type: CreatableRecordType, record: DocumentData | null = null) => {
-    setModalRecordType(type);
-    setEditingRecord(record);
-    setIsModalOpen(true);
-  };
-  
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditingRecord(null);
-  };
+        const familyId = userProfile.familyIDs[0];
+        const constraints = [
+            where("familyId", "==", familyId),
+            orderBy("timestamp", "desc")
+        ];
 
-  if (loading || !userProfile) {
-    return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
-  }
-
-  const getRecordTitle = (record: DocumentData) => {
-    switch(record.type) {
-      case 'feeding': return '餵奶';
-      case 'diaper': return '換尿布';
-      case 'sleep': return '睡眠';
-      case 'solid-food': return '副食品';
-      case 'snapshot': return '照片手札'; // [修改] 加入 snapshot 的標題
-      case 'bmi': return 'BMI';
-      case 'measurement':
-        switch(record.measurementType) {
-          case 'height': return '身高';
-          case 'weight': return '體重';
-          case 'headCircumference': return '頭圍';
-          default: return '生長記錄';
+        if (filter !== 'all') {
+            if (filter === 'other') {
+                constraints.push(where("type", "not-in", ['feeding', 'diaper', 'solid-food', 'measurement']));
+            } else {
+                constraints.push(where("type", "==", filter));
+            }
         }
-      default: return '紀錄';
-    }
-  };
-
-  const getUnit = (record: DocumentData) => {
-    if (record.type === 'measurement') {
-        return record.measurementType === 'weight' ? 'kg' : 'cm';
-    }
-    if (record.type === 'feeding') {
-        return 'ml';
-    }
-    return '';
-  };
-
-  return (
-    <>
-      <div className="flex min-h-screen flex-col w-full bg-gray-50">
-        <header className="w-full bg-white shadow-sm flex-shrink-0">
-          <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800">完整時間軸</h1>
-            <Link href="/dashboard" className="text-sm font-medium text-blue-600 hover:underline">&larr; 返回儀表板</Link>
-          </div>
-        </header>
         
-        <main className="w-full container mx-auto flex-grow py-8 px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-lg shadow p-4 space-y-3">
-            {isRecordsLoading ? <p className="text-center p-8">正在載入記錄...</p> : firestoreError ? <p className="text-red-500 text-center p-8">{firestoreError}</p> : allRecords.length > 0 ? (
-              allRecords.map((record) => (
-                <div key={record.id} className="p-4 border-b last:border-b-0 flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold text-lg">{getRecordTitle(record)}</p>
-                    {record.type === 'solid-food' && record.foodItems && (<p className="text-gray-600">內容: {record.foodItems}</p>)}
-                    {record.type === 'feeding' && record.amount && (<p className="text-gray-600">奶量: {record.amount} ml</p>)}
-                    {(record.type === 'measurement' || record.type === 'bmi') && record.value && (<p className="text-gray-600">數值: {record.value} {getUnit(record)}</p>)}
-                    {record.notes && <p className="text-gray-600 mt-1">備註: {record.notes}</p>}
-                    <p className="text-xs text-gray-500 mt-2">記錄者: {record.creatorName || 'N/A'}</p>
-                    <p className="text-xs text-gray-500 mt-1">時間: {record.timestamp?.toDate().toLocaleString('zh-TW') || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <button 
-                      onClick={() => handleOpenModal(record.type, record)}
-                      className="text-sm text-blue-600 hover:underline"
-                      disabled={record.type === 'bmi' || record.type === 'snapshot'} // 照片手札通常只有新增和刪除
-                    >
-                      編輯
-                    </button>
-                  </div>
+        const q = query(collection(db, "records"), ...constraints);
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setAllRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [user, userProfile, loading, router, filter]);
+
+    const handleDelete = async (recordId: string) => {
+        if (window.confirm('您確定要刪除這筆紀錄嗎？')) {
+            await deleteDoc(doc(db, 'records', recordId));
+        }
+    };
+
+    const getRecordDescription = (record: DocumentData): string => {
+        switch (record.type) {
+            case 'feeding': return `${record.amount || '--'} ml`;
+            case 'diaper': 
+                return (record.diaperType || []).join(' + ');
+            case 'solid-food':
+                return `${record.foodItems || ''} ${record.amount || ''}g`;
+            case 'measurement':
+                return `${record.measurementType}: ${record.value}`;
+            default:
+                return record.notes || '無備註';
+        }
+    }
+
+    return (
+        <div className="p-4 md:p-8">
+            <h1 className="text-3xl font-bold mb-4">完整時間軸</h1>
+            <div className="bg-white p-6 rounded-lg shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">詳細紀錄</h3>
+                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                        {filterButtons.map(btn => (
+                            <button key={btn.type} onClick={() => setFilter(btn.type)} className={`px-3 py-1.5 rounded-md text-sm transition-colors ${filter === btn.type ? 'bg-white shadow-sm' : 'hover:bg-gray-200'}`} title={btn.label}>
+                                {btn.icon}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-              ))
-            ) : <p className="text-center text-gray-500 py-8">目前沒有任何記錄。</p>}
-          </div>
-        </main>
-      </div>
-
-      <FloatingActionButton onAddRecord={(type) => handleOpenModal(type)} />
-
-      {isModalOpen && <AddRecordModal recordType={modalRecordType} onClose={handleCloseModal} existingRecord={editingRecord} />}
-    </>
-  );
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                    {isLoading ? <p>載入中...</p> : allRecords.length > 0 ? (
+                        allRecords.map(record => (
+                            <div key={record.id} className="flex items-center gap-4 p-2 rounded-lg hover:bg-gray-50">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                                    {recordIcons[record.type] || recordIcons.default}
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="text-sm">
+                                        <span className="font-semibold">{(record.timestamp as Timestamp).toDate().toLocaleTimeString('zh-TW', { hour: '2-digit', minute:'2-digit' })}</span>
+                                        <span className="ml-2">{getRecordDescription(record)}</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500">({record.creatorName || '未知'})</p>
+                                </div>
+                                <button onClick={() => handleDelete(record.id)} className="text-red-400 hover:text-red-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                        ))
+                    ) : <p className="text-center py-8 text-gray-500">找不到符合條件的紀錄。</p>}
+                </div>
+            </div>
+        </div>
+    );
 }
+

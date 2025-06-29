@@ -1,11 +1,13 @@
+// src/app/page.tsx
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { signInWithGoogle } from '@/lib/auth';
-import BabixLogo from '@/assets/icons/babix.svg';
+import BabixLogo from '@/components/icons/BabixLogo';
 import { useRouter } from 'next/navigation';
 
 // 將首頁專用的 CSS 樣式隔離在此，避免影響其他頁面
@@ -36,18 +38,10 @@ const HomePageStyles = () => (
     .floating-button-group.open .sub-button:nth-child(2) { transition-delay: 0.1s; }
     .icon-link {
         display: inline-flex;
-        flex-direction: column;
         align-items: center;
-        gap: 0.25rem;
-        font-size: 0.75rem;
-        line-height: 1rem;
-    }
-    @media (min-width: 768px) {
-        .icon-link {
-            flex-direction: row;
-            font-size: 0.875rem;
-            line-height: 1.25rem;
-        }
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
     }
   `}</style>
 );
@@ -75,38 +69,81 @@ const FloatingActionButton = () => {
 const AppHeader = () => {
     const { user } = useAuth();
     const [role, setRole] = useState('媽媽');
-    const [isDropdownOpen, setDropdownOpen] = useState(false);
+    const [isRoleDropdownOpen, setRoleDropdownOpen] = useState(false);
+    const [isDashboardMenuOpen, setDashboardMenuOpen] = useState(false);
+    const dashboardMenuRef = useRef<HTMLDivElement>(null);
+    const roleMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dashboardMenuRef.current && !dashboardMenuRef.current.contains(event.target as Node)) {
+                setDashboardMenuOpen(false);
+            }
+            if (roleMenuRef.current && !roleMenuRef.current.contains(event.target as Node)) {
+                setRoleDropdownOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [dashboardMenuRef, roleMenuRef]);
 
     return (
-        <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm shadow-sm flex-shrink-0">
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-sm shadow-sm flex-shrink-0">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <Link href="/" className="flex items-center">
-                    <Image src={BabixLogo} alt="Babix Logo" width={148} height={40} priority className="w-auto h-auto" />
+                    <BabixLogo className="w-auto h-10 text-blue-600" />
                 </Link>
                 <div className="flex items-center gap-4 md:gap-6">
-                    <nav className="hidden items-center gap-6 md:flex">
-                        <Link href="/dashboard" className="icon-link text-gray-600 hover:text-blue-600" title="儀表板">
+                    <div className="relative" ref={dashboardMenuRef}>
+                        <button onClick={() => setDashboardMenuOpen(!isDashboardMenuOpen)} className="icon-link text-gray-600 hover:text-blue-600" title="功能選單">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" /></svg>
-                        </Link>
-                    </nav>
-                    <div className="relative">
-                        <button onClick={() => setDropdownOpen(!isDropdownOpen)} className="flex items-center gap-1 text-gray-600 hover:text-blue-600 focus:outline-none">
+                            <span className="hidden md:inline">儀表板</span>
+                        </button>
+                        {isDashboardMenuOpen && (
+                             <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                                <div className="p-2">
+                                    <Link href="/growth" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <svg className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 11l5-5m0 0l5 5m-5-5v12" /></svg>
+                                        生長曲線
+                                    </Link>
+                                    <Link href="/milestones" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                       <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        發展里程碑
+                                    </Link>
+                                    <Link href="/photowall" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <svg className="h-5 w-5 text-pink-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" /></svg>
+                                        照片牆
+                                    </Link>
+                                     <Link href="/articles" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <svg className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                                        育兒知識庫
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="relative" ref={roleMenuRef}>
+                        <button onClick={() => setRoleDropdownOpen(!isRoleDropdownOpen)} className="flex items-center gap-1 text-gray-600 hover:text-blue-600 focus:outline-none">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m-7.5-2.962a3.75 3.75 0 0 1 5.25 0m4.5 0a3.75 3.75 0 0 1 5.25 0M4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 0 2.25 8.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
                             <span className="text-sm md:text-base">{role}</span>
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
                         </button>
-                        {isDropdownOpen && (
-                            <div className="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                        {isRoleDropdownOpen && (
+                           <div className="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
                                 <div className="py-1">
-                                    {['媽媽', '爸爸', '爺爺', '奶奶', '保姆'].map((r) => (<a href="#" key={r} onClick={(e) => { e.preventDefault(); setRole(r); setDropdownOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{r}</a>))}
+                                    {['媽媽', '爸爸', '爺爺', '奶奶', '保姆'].map((r) => (<a href="#" key={r} onClick={(e) => { e.preventDefault(); setRole(r); setRoleDropdownOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">{r}</a>))}
                                 </div>
                             </div>
                         )}
                     </div>
                     {user ? (
-                        <Link href="/dashboard">
+                        <Link href="/dashboard" aria-label="前往儀表板">
                             <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                                {user.photoURL && <Image src={user.photoURL} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" />}
+                                {user.photoURL ? <Image src={user.photoURL} alt={user.displayName || 'User'} width={32} height={32} className="rounded-full" /> : 
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="h-6 w-6 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+                                }
                             </div>
                         </Link>
                     ) : (
