@@ -1,19 +1,23 @@
 // [修正] src/app/photowall/page.tsx
 
+// [修正] 將 'use client' 移至檔案的最頂端
+'use client'; 
+
 import Link from 'next/link';
 import Image from 'next/image';
 import { getSnapshots } from '@/lib/records';
 import { useAuth } from '@/contexts/AuthContext';
-'use client'; 
-
 import { useEffect, useState } from 'react';
 import { DocumentData, Timestamp } from 'firebase/firestore';
 
+// 建立一個卡片元件來顯示單張照片
 function PhotoCard({ record }: { record: DocumentData }) {
+  // 假設縮圖 URL 是在原始 URL 檔名後加上後綴
+  // 例如：image.png -> image_400x400.png
   const getThumbnailUrl = (url: string) => {
     if (!url) return ''; // 如果沒有 URL，返回空字串
     const parts = url.split('.');
-    if (parts.length < 2) return url;
+    if (parts.length < 2) return url; // 如果 URL 沒有副檔名，直接返回原圖
     const extension = parts.pop();
     const name = parts.join('.');
     return `${name}_400x400.${extension}`;
@@ -53,11 +57,10 @@ export default function PhotoWallPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // [修正] 增加更嚴謹的檢查，確保 userProfile 和 familyIDs 都存在且有內容
     if (!authLoading && userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const familyId = userProfile.familyIDs[0];
       getSnapshots(familyId)
-        .then((data: DocumentData[]) => { // [修正] 為 data 參數加上明確的 DocumentData[] 型別
+        .then((data: DocumentData[]) => {
           setSnapshots(data);
           setIsLoading(false);
         })
@@ -66,7 +69,6 @@ export default function PhotoWallPage() {
             setIsLoading(false);
         });
     } else if (!authLoading) {
-      // 如果 auth 已載入完畢，但仍沒有 profile 或 familyID，也應停止載入狀態
       setIsLoading(false);
     }
   }, [userProfile, authLoading]);
@@ -94,6 +96,7 @@ export default function PhotoWallPage() {
             <p className="text-sm text-gray-400 mt-2">（上傳功能將在下一階段實作）</p>
           </div>
         )}
+        
       </div>
     </div>
   );
