@@ -9,6 +9,9 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 
+// --- vvv 這裡是本次修改的重點 vvv ---
+export type MilkType = 'breast' | 'formula' | 'mixed';
+
 export interface BabyProfile extends DocumentData {
   id: string;
   name: string;
@@ -16,7 +19,15 @@ export interface BabyProfile extends DocumentData {
   gender: 'boy' | 'girl';
   gestationalAgeWeeks: number; // 出生週數
   familyId: string;
+
+  // 新增欄位 (New Fields)
+  milkType?: MilkType;
+  formulaBrand?: string;
+  formulaCalories?: number; // 每 100ml 的熱量
+  knownAllergens?: string[];
+  watchListFoods?: string[];
 }
+// --- ^^^ 這裡是本次修改的重點 ^^^ ---
 
 // 獲取寶寶資料
 export const getBabyProfile = async (
@@ -37,6 +48,13 @@ export const getBabyProfile = async (
     gender: data.gender,
     gestationalAgeWeeks: data.gestationalAgeWeeks,
     familyId: data.familyId,
+    // --- vvv 確保新欄位也被讀取 vvv ---
+    milkType: data.milkType,
+    formulaBrand: data.formulaBrand,
+    formulaCalories: data.formulaCalories,
+    knownAllergens: data.knownAllergens || [],
+    watchListFoods: data.watchListFoods || [],
+    // --- ^^^ 確保新欄位也被讀取 ^^^ ---
   };
 };
 

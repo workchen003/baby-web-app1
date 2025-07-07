@@ -1,13 +1,13 @@
 // src/lib/records.ts
 
 import { db } from './firebase';
-import { 
-  collection, 
-  addDoc, 
+import {
+  collection,
+  addDoc,
   doc,
   updateDoc,
   deleteDoc,
-  serverTimestamp, 
+  serverTimestamp,
   DocumentData,
   Timestamp,
   query,
@@ -21,23 +21,28 @@ import {
 } from 'firebase/firestore';
 import { UserProfile } from '@/contexts/AuthContext';
 
-// [新增] 將此共用型別定義在此處並匯出，作為唯一的真實來源
-export type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot';
+export type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot' | 'pumping'; // 新增 'pumping'
 
-// [修改] RecordData 介面，為 'snapshot' 新增了所有需要的欄位
+// --- vvv 這裡是本次修改的重點 vvv ---
 export interface RecordData extends DocumentData {
   familyId: string;
   babyId: string;
   creatorId: string;
   creatorName: string | null;
-  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'bmi' | 'snapshot';
+  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'bmi' | 'snapshot' | 'pumping'; // 新增 'pumping'
   timestamp: Timestamp;
   notes?: string;
-  
+
   // For feeding
   amount?: number;
-  method?: 'bottle' | 'breastfeeding';
-  
+  // **擴充餵奶紀錄欄位**
+  feedMethod?: 'breast' | 'formula'; // 該次餵食方式
+  formulaBrand?: string;              // 若為配方奶，其品牌
+  caloriesPerMl?: number;             // 若為配方奶，其當時的每毫升熱量
+
+  // For pumping
+  // (amount 欄位可共用)
+
   // For diaper
   diaperType?: ('wet' | 'dirty')[];
 
@@ -52,13 +57,14 @@ export interface RecordData extends DocumentData {
   // For measurement or BMI
   measurementType?: 'height' | 'weight' | 'headCircumference';
   value?: number;
-  
+
   // For snapshot
   imageUrl?: string;
   tags?: string[];
   year?: number;
   month?: number;
 }
+// --- ^^^ 這裡是本次修改的重點 ^^^ ---
 
 /**
  * [修改] 新增一筆記錄到 Firestore，並修復了 serverTimestamp 的型別問題
@@ -72,19 +78,17 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
   }
 
   try {
-    // [修改] 移除對 dataToSave 的型別註記，讓 TypeScript 自動推斷，以解決 FieldValue 的型別衝突
     const dataToSave = {
       ...recordData,
       babyId: 'baby_01',
       creatorName: userProfile.displayName,
       timestamp: recordData.timestamp || serverTimestamp(),
     };
-    
-    // [新增] 如果是 snapshot 類型，自動從 timestamp 中提取並儲存年份和月份
+
     if (recordData.type === 'snapshot' && dataToSave.timestamp instanceof Timestamp) {
         const date = dataToSave.timestamp.toDate();
         dataToSave.year = date.getFullYear();
-        dataToSave.month = date.getMonth() + 1; // getMonth() 回傳 0-11，所以要加 1
+        dataToSave.month = date.getMonth() + 1;
     }
 
     const docRef = await addDoc(collection(db, 'records'), dataToSave);
@@ -101,9 +105,9 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
  * [修改] 獲取照片牆的紀錄，包含篩選和分頁功能，並修正了查詢建立方式
  */
 export const getSnapshots = async (
-  familyId: string, 
-  options: { 
-    perPage?: number; 
+  familyId: string,
+  options: {
+    perPage?: number;
     lastDoc?: QueryDocumentSnapshot<DocumentData>;
     filter?: {
       year?: number;
@@ -114,14 +118,12 @@ export const getSnapshots = async (
 ) => {
   const perPage = options.perPage || 20;
   const recordsRef = collection(db, "records");
-  
-  // [修改] 將共用的查詢條件放在一個基礎陣列中
+
   const baseConstraints: QueryConstraint[] = [
     where("familyId", "==", familyId),
     where("type", "==", "snapshot"),
   ];
 
-  // [新增] 根據篩選條件動態加入 where 子句
   if (options.filter) {
     if (options.filter.year) {
       baseConstraints.push(where("year", "==", options.filter.year));
@@ -133,8 +135,7 @@ export const getSnapshots = async (
       baseConstraints.push(where("tags", "array-contains", options.filter.tag.trim()));
     }
   }
-  
-  // 排序和分頁條件要放在篩選條件之後
+
   baseConstraints.push(orderBy("timestamp", "desc"));
   baseConstraints.push(limit(perPage));
 
@@ -146,7 +147,7 @@ export const getSnapshots = async (
 
   const querySnapshot = await getDocs(q);
   const snapshots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  
+
   return {
     snapshots,
     lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1],
