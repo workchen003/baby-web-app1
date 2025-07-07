@@ -1,15 +1,45 @@
 // src/app/meal-plan/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBabyProfile, BabyProfile } from '@/lib/babies';
-// --- vvv 這裡是本次修改的重點 vvv ---
-import { getMeasurementRecords, RecordData } from '@/lib/records'; // 引入我們定義好的 RecordData 型別
-import { mealPlanData, AgeStagePlan } from '@/data/mealPlanData';
+import { getMeasurementRecords, RecordData } from '@/lib/records';
+import { mealPlanData, AgeStagePlan, Recipe } from '@/data/mealPlanData';
 
-// 輔助函式：計算月齡 (簡易版)
+// --- vvv 新增：購物清單 Modal 元件 vvv ---
+const ShoppingListModal = ({ recipes, onClose }: { recipes: Recipe[], onClose: () => void }) => {
+    const shoppingList = useMemo(() => {
+        // 簡單地將所有推薦食譜的名稱作為購物清單項目
+        const items = recipes.map(r => r.name);
+        return [...new Set(items)]; // 使用 Set 去除重複項目
+    }, [recipes]);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(shoppingList.join('\n'));
+        alert('購物清單已複製到剪貼簿！');
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                <h2 className="text-2xl font-bold mb-4">本週採買清單</h2>
+                <ul className="space-y-2 max-h-60 overflow-y-auto mb-6">
+                    {shoppingList.map(item => (
+                        <li key={item} className="p-2 bg-gray-100 rounded">{item}</li>
+                    ))}
+                </ul>
+                <div className="flex gap-4">
+                    <button onClick={handleCopy} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700">複製清單</button>
+                    <button onClick={onClose} className="w-full text-center px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">關閉</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+// --- ^^^ 新增：購物清單 Modal 元件 ^^^ ---
+
 const calculateAgeInMonths = (birthDate: Date): number => {
     const today = new Date();
     const birth = new Date(birthDate);
@@ -25,6 +55,7 @@ const calculateAgeInMonths = (birthDate: Date): number => {
     return age_y * 12 + age_m;
 };
 
+
 export default function MealPlanPage() {
     const { user, userProfile, loading: authLoading } = useAuth();
 
@@ -35,6 +66,10 @@ export default function MealPlanPage() {
     const [feedCount, setFeedCount] = useState(6);
     const [volumePerFeed, setVolumePerFeed] = useState(150);
     const [solidFoodGrams, setSolidFoodGrams] = useState(50);
+
+    // --- vvv 新增：購物清單 Modal 開關狀態 vvv ---
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    // --- ^^^ 新增：購物清單 Modal 開關狀態 ^^^ ---
 
     const activeStage = useMemo((): AgeStagePlan | undefined => {
         if (!babyProfile) return undefined;
@@ -81,7 +116,6 @@ export default function MealPlanPage() {
                 setBabyProfile(profile);
                 const weightRecords = records.filter(r => r.measurementType === 'weight');
                 if (weightRecords.length > 0) {
-                    // 使用驚嘆號 (!) 告訴 TypeScript 我們確定 value 存在，因為 filter 已經確保了這一點
                     setLatestWeight(weightRecords[weightRecords.length - 1].value!);
                 }
             }
@@ -95,6 +129,19 @@ export default function MealPlanPage() {
         if (calorieDifference > 0) return 'text-orange-500';
         return 'text-blue-500';
     }
+
+    // --- vvv 新增：檢查過敏原的邏輯 vvv ---
+    const checkAllergen = useCallback((recipe: Recipe): boolean => {
+        if (!babyProfile?.knownAllergens || !recipe.allergens) {
+            return false;
+        }
+        // 檢查食譜的過敏原陣列中，是否有任何一項存在於寶寶的已知過敏原陣列中
+        return recipe.allergens.some(allergen => 
+            babyProfile.knownAllergens?.includes(allergen)
+        );
+    }, [babyProfile?.knownAllergens]);
+    // --- ^^^ 新增：檢查過敏原的邏輯 ^^^ ---
+
 
     if (isLoading) {
         return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">載入中...</div>;
@@ -110,61 +157,86 @@ export default function MealPlanPage() {
     }
 
     return (
-        <div className="p-4 md:p-8">
-            <h1 className="text-3xl font-bold mb-2">餐食規劃</h1>
-            <p className="text-gray-600 mb-8">根據寶寶最新體重與月齡，提供個人化的餐食建議</p>
+        <>
+            {/* --- vvv 新增：Modal 的渲染判斷 vvv --- */}
+            {isModalOpen && activeStage && <ShoppingListModal recipes={activeStage.recipes} onClose={() => setIsModalOpen(false)} />}
+            {/* --- ^^^ 新增：Modal 的渲染判斷 ^^^ --- */}
+            <div className="p-4 md:p-8">
+                <h1 className="text-3xl font-bold mb-2">餐食規劃</h1>
+                <p className="text-gray-600 mb-8">根據寶寶最新體重與月齡，提供個人化的餐食建議</p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1 space-y-6">
-                    <div className="p-6 bg-white rounded-lg shadow-sm">
-                        <h3 className="font-semibold text-gray-500">當前階段</h3>
-                        <p className="text-2xl font-bold text-blue-600">{activeStage?.stage}</p>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-1 space-y-6">
+                        <div className="p-6 bg-white rounded-lg shadow-sm">
+                            <h3 className="font-semibold text-gray-500">當前階段</h3>
+                            <p className="text-2xl font-bold text-blue-600">{activeStage?.stage}</p>
+                        </div>
+                        <div className="p-6 bg-white rounded-lg shadow-sm">
+                            <h3 className="font-semibold text-gray-500">每日建議總熱量</h3>
+                            <p className="text-2xl font-bold">{suggestedTotalCalories} kcal</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                                (依據 {latestWeight}kg x {activeStage?.caloriesPerKg}kcal/kg 推算)
+                            </p>
+                        </div>
+                        <div className="p-6 bg-white rounded-lg shadow-sm">
+                            <h3 className="font-semibold text-gray-500">目前規劃總熱量</h3>
+                            <p className="text-2xl font-bold">{actualTotalCalories} kcal</p>
+                            <p className={`text-sm font-semibold mt-1 ${getDiffColor()}`}>
+                               {calorieDifference === 0 ? '完美達成！' : `與建議相差 ${calorieDifference} kcal`}
+                            </p>
+                        </div>
                     </div>
-                    <div className="p-6 bg-white rounded-lg shadow-sm">
-                        <h3 className="font-semibold text-gray-500">每日建議總熱量</h3>
-                        <p className="text-2xl font-bold">{suggestedTotalCalories} kcal</p>
-                        <p className="text-xs text-gray-400 mt-1">
-                            (依據 {latestWeight}kg x {activeStage?.caloriesPerKg}kcal/kg 推算)
-                        </p>
-                    </div>
-                    <div className="p-6 bg-white rounded-lg shadow-sm">
-                        <h3 className="font-semibold text-gray-500">目前規劃總熱量</h3>
-                        <p className="text-2xl font-bold">{actualTotalCalories} kcal</p>
-                        <p className={`text-sm font-semibold mt-1 ${getDiffColor()}`}>
-                           {calorieDifference === 0 ? '完美達成！' : `與建議相差 ${calorieDifference} kcal`}
-                        </p>
-                    </div>
-                </div>
 
-                <div className="lg:col-span-2 p-6 bg-white rounded-lg shadow-sm space-y-6">
-                    <div>
-                        <label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">每日餵奶次數</label>
-                        <input id="feedCount" type="range" min="3" max="12" step="1" value={feedCount} onChange={(e) => setFeedCount(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
-                        <p className="text-center font-bold">{feedCount} 次</p>
-                    </div>
-                     <div>
-                        <label htmlFor="volumePerFeed" className="block text-sm font-medium text-gray-700">每次奶量 (ml)</label>
-                        <input id="volumePerFeed" type="range" min="60" max="300" step="10" value={volumePerFeed} onChange={(e) => setVolumePerFeed(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
-                        <p className="text-center font-bold">{volumePerFeed} ml</p>
-                    </div>
-                    <div>
-                        <label htmlFor="solidFoodGrams" className="block text-sm font-medium text-gray-700">每日副食品總量 (g)</label>
-                        <input id="solidFoodGrams" type="range" min="0" max="300" step="10" value={solidFoodGrams} onChange={(e) => setSolidFoodGrams(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
-                        <p className="text-center font-bold">{solidFoodGrams} g</p>
-                    </div>
-                    <div className="pt-6 border-t">
-                        <h4 className="text-lg font-semibold mb-2">本階段建議副食品</h4>
-                        <div className="flex flex-wrap gap-2">
-                           {activeStage?.recipes.map(recipe => (
-                               <span key={recipe.name} className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
-                                   {recipe.name}
-                               </span>
-                           ))}
+                    <div className="lg:col-span-2 p-6 bg-white rounded-lg shadow-sm space-y-6">
+                        <div>
+                            <label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">每日餵奶次數</label>
+                            <input id="feedCount" type="range" min="3" max="12" step="1" value={feedCount} onChange={(e) => setFeedCount(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                            <p className="text-center font-bold">{feedCount} 次</p>
+                        </div>
+                         <div>
+                            <label htmlFor="volumePerFeed" className="block text-sm font-medium text-gray-700">每次奶量 (ml)</label>
+                            <input id="volumePerFeed" type="range" min="60" max="300" step="10" value={volumePerFeed} onChange={(e) => setVolumePerFeed(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                            <p className="text-center font-bold">{volumePerFeed} ml</p>
+                        </div>
+                        <div>
+                            <label htmlFor="solidFoodGrams" className="block text-sm font-medium text-gray-700">每日副食品總量 (g)</label>
+                            <input id="solidFoodGrams" type="range" min="0" max="300" step="10" value={solidFoodGrams} onChange={(e) => setSolidFoodGrams(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                            <p className="text-center font-bold">{solidFoodGrams} g</p>
+                        </div>
+                        <div className="pt-6 border-t">
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="text-lg font-semibold">本階段建議副食品</h4>
+                                {/* --- vvv 新增：購物清單按鈕 vvv --- */}
+                                <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-md shadow-sm hover:bg-green-700">
+                                    一鍵生成採買清單
+                                </button>
+                                {/* --- ^^^ 新增：購物清單按鈕 ^^^ --- */}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                               {activeStage?.recipes.map(recipe => {
+                                   // --- vvv 新增：檢查是否為過敏原 vvv ---
+                                   const isAllergen = checkAllergen(recipe);
+                                   return (
+                                       <span 
+                                            key={recipe.name} 
+                                            className={`px-3 py-1 text-sm font-medium rounded-full ${
+                                                isAllergen 
+                                                ? 'bg-red-100 text-red-800 ring-2 ring-red-500' 
+                                                : 'bg-green-100 text-green-800'
+                                            }`}
+                                            title={isAllergen ? '注意：此為寶寶的已知過敏原！' : ''}
+                                        >
+                                           {isAllergen && '⚠️ '}
+                                           {recipe.name}
+                                       </span>
+                                   )
+                                   // --- ^^^ 新增：檢查是否為過敏原 ^^^ ---
+                               })}
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 }
-// --- ^^^ 整個檔案都被更新了 ^^^ ---

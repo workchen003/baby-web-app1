@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getBabyProfile, updateBabyProfile, BabyProfile, MilkType } from '@/lib/babies';
 import Link from 'next/link';
 
-// 將 Date 物件轉換為 yyyy-MM-dd 字串的輔助函式
 const dateToString = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
@@ -17,45 +16,42 @@ export default function EditBabyProfilePage() {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
-  // 狀態管理
   const [isEditing, setIsEditing] = useState(false);
   const [babyProfile, setBabyProfile] = useState<BabyProfile | null>(null);
 
-  // 表單 State
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'boy' | 'girl'>('boy');
   const [gestationalAgeWeeks, setGestationalAgeWeeks] = useState(40);
-  // --- vvv 新增的表單狀態 vvv ---
   const [milkType, setMilkType] = useState<MilkType>('breast');
   const [formulaBrand, setFormulaBrand] = useState('');
   const [formulaCalories, setFormulaCalories] = useState('');
+  // --- vvv 新增的表單狀態 vvv ---
+  const [knownAllergens, setKnownAllergens] = useState('');
   // --- ^^^ 新增的表單狀態 ^^^ ---
-
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const babyId = 'baby_01'; // 在我們的應用中，暫時固定為單一寶寶
+  const babyId = 'baby_01';
 
-  // 將設定表單狀態的邏輯封裝起來，方便重複使用
   const setFormData = useCallback((profile: BabyProfile | null) => {
     if (profile) {
       setName(profile.name);
       setBirthDate(dateToString(profile.birthDate));
       setGender(profile.gender);
       setGestationalAgeWeeks(profile.gestationalAgeWeeks);
-      // --- vvv 設定新欄位的初始值 vvv ---
       setMilkType(profile.milkType || 'breast');
       setFormulaBrand(profile.formulaBrand || '');
       setFormulaCalories(profile.formulaCalories?.toString() || '');
+      // --- vvv 設定新欄位的初始值 vvv ---
+      // 將陣列轉為以逗號分隔的字串以利編輯
+      setKnownAllergens(profile.knownAllergens?.join(', ') || '');
       // --- ^^^ 設定新欄位的初始值 ^^^ ---
     }
   }, []);
 
-
-  // 載入現有資料並設定表單初始值
   useEffect(() => {
     if (!loading && !user) {
         router.push('/');
@@ -69,7 +65,7 @@ export default function EditBabyProfilePage() {
             setBabyProfile(profile);
             setFormData(profile);
           } else {
-            setIsEditing(true); // 如果沒有資料，直接進入編輯模式
+            setIsEditing(true);
           }
         })
         .catch(err => {
@@ -80,9 +76,7 @@ export default function EditBabyProfilePage() {
     }
   }, [user, userProfile, loading, router, setFormData]);
 
-  const handleEdit = () => {
-    setIsEditing(true);
-  };
+  const handleEdit = () => setIsEditing(true);
 
   const handleCancel = () => {
     if (babyProfile) {
@@ -104,20 +98,26 @@ export default function EditBabyProfilePage() {
     setError('');
 
     try {
+      // --- vvv 處理過敏原字串 vvv ---
+      // 將字串分割、去除多餘空格、過濾掉空字串，確保資料乾淨
+      const allergensArray = knownAllergens.split(',')
+        .map(item => item.trim())
+        .filter(item => item !== '');
+      // --- ^^^ 處理過敏原字串 ^^^ ---
+
       const profileData: Partial<BabyProfile> = {
         name,
         birthDate: new Date(birthDate),
         gender,
         gestationalAgeWeeks: Number(gestationalAgeWeeks),
         familyId: userProfile.familyIDs[0],
-        // --- vvv 儲存新欄位的值 vvv ---
         milkType,
         formulaBrand: milkType === 'formula' || milkType === 'mixed' ? formulaBrand : '',
         formulaCalories: milkType === 'formula' || milkType === 'mixed' ? Number(formulaCalories) : 0,
-        // --- ^^^ 儲存新欄位的值 ^^^ ---
+        knownAllergens: allergensArray, // 儲存處理好的陣列
       };
 
-      await updateBabyProfile(babyId, profileData as any); // 使用 any 暫時規避 Omit 的複雜型別問題
+      await updateBabyProfile(babyId, profileData as any);
 
       const updatedProfile = await getBabyProfile(babyId);
       setBabyProfile(updatedProfile);
@@ -140,13 +140,12 @@ export default function EditBabyProfilePage() {
     <div className="flex items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 py-12">
       <div className="p-8 bg-white rounded-lg shadow-md w-full max-w-lg">
         {isEditing ? (
-          // --- 編輯模式 ---
           <>
             <h1 className="text-2xl font-bold mb-6 text-center">{babyProfile ? '編輯寶寶資料' : '建立寶寶資料'}</h1>
             <form onSubmit={handleSave} className="space-y-6">
-              {/* -- 基本資料 -- */}
               <fieldset className="space-y-4 p-4 border rounded-md">
                 <legend className="text-lg font-semibold px-2">基本資料</legend>
+                {/* ... 其他基本資料欄位維持不變 ... */}
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700">寶寶的名字</label>
                   <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required />
@@ -166,7 +165,6 @@ export default function EditBabyProfilePage() {
                 </div>
               </fieldset>
 
-              {/* -- 餐食規劃設定 -- */}
               <fieldset className="space-y-4 p-4 border rounded-md">
                  <legend className="text-lg font-semibold px-2">餐食設定</legend>
                  <div>
@@ -189,6 +187,12 @@ export default function EditBabyProfilePage() {
                         </div>
                     </>
                  )}
+                 {/* --- vvv 新增的過敏原輸入框 vvv --- */}
+                 <div>
+                    <label htmlFor="knownAllergens" className="block text-sm font-medium text-gray-700">已知過敏原</label>
+                    <input id="knownAllergens" type="text" value={knownAllergens} onChange={(e) => setKnownAllergens(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：蛋, 魚, 牛奶 (用逗號分隔)"/>
+                 </div>
+                 {/* --- ^^^ 新增的過敏原輸入框 ^^^ --- */}
               </fieldset>
 
               {error && <p className="text-red-500 text-sm text-center">{error}</p>}
@@ -196,7 +200,6 @@ export default function EditBabyProfilePage() {
             </form>
           </>
         ) : (
-          // --- 檢視模式 ---
           <>
             <h1 className="text-2xl font-bold text-gray-800 mb-6">寶寶資訊</h1>
             {babyProfile ? (
@@ -205,7 +208,6 @@ export default function EditBabyProfilePage() {
                 <div className="flex justify-between items-baseline py-2 border-b"><span className="text-gray-500">生日</span><span className="font-semibold text-lg">{new Date(babyProfile.birthDate).toLocaleDateString('zh-TW')}</span></div>
                 <div className="flex justify-between items-baseline py-2 border-b"><span className="text-gray-500">生理性別</span><span className="font-semibold text-lg">{babyProfile.gender === 'boy' ? '男孩' : '女孩'}</span></div>
                 <div className="flex justify-between items-baseline py-2 border-b"><span className="text-gray-500">出生週數</span><span className="font-semibold text-lg">{babyProfile.gestationalAgeWeeks} 週</span></div>
-                {/* -- vvv 顯示新增的餐食資訊 vvv -- */}
                 <div className="flex justify-between items-baseline py-2 border-b"><span className="text-gray-500">奶類類型</span><span className="font-semibold text-lg">{
                     babyProfile.milkType === 'breast' ? '母乳' :
                     babyProfile.milkType === 'formula' ? '配方奶' :
@@ -217,7 +219,17 @@ export default function EditBabyProfilePage() {
                         <div className="flex justify-between items-baseline py-2 border-b"><span className="text-gray-500">配方奶熱量</span><span className="font-semibold text-lg">{babyProfile.formulaCalories ? `${babyProfile.formulaCalories} kcal/100ml` : '未設定'}</span></div>
                     </>
                  )}
-                 {/* -- ^^^ 顯示新增的餐食資訊 ^^^ -- */}
+                 {/* --- vvv 顯示已知的過敏原 vvv --- */}
+                 <div className="flex justify-between items-baseline py-2 border-b">
+                    <span className="text-gray-500">已知過敏原</span>
+                    <span className="font-semibold text-lg text-right">
+                        {babyProfile.knownAllergens && babyProfile.knownAllergens.length > 0
+                            ? babyProfile.knownAllergens.join('、')
+                            : '無'
+                        }
+                    </span>
+                 </div>
+                 {/* --- ^^^ 顯示已知的過敏原 ^^^ --- */}
             </div>
              ) : (
                 <p className="text-center text-gray-500 py-8">尚未建立寶寶資料。</p>
