@@ -9,6 +9,12 @@ import { signOutUser } from '@/lib/auth';
 import BabixLogo from '@/components/icons/BabixLogo';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
+// --- vvv 新增：引入懸浮按鈕相關元件與型別 vvv ---
+import FloatingActionButton from './FloatingActionButton';
+import AddRecordModal from './AddRecordModal';
+import { CreatableRecordType, RecordData } from '@/lib/records';
+// --- ^^^ 新增：引入懸浮按鈕相關元件與型別 ^^^ ---
+
 
 // 計算寶寶年齡的輔助函式
 const calculateAge = (birthDate: Date): string => {
@@ -104,6 +110,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
     const pathname = usePathname();
 
+    // --- vvv 新增：處理 Modal 開關的狀態 vvv ---
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData?: Partial<RecordData> } | null>(null);
+    const [babyProfile, setBabyProfile] = useState<BabyProfile | null>(null);
+
+    useEffect(() => {
+        if (user) {
+            getBabyProfile('baby_01').then(setBabyProfile);
+        }
+    }, [user]);
+
+    const handleAddRecord = (type: CreatableRecordType) => {
+        setModalConfig({ type });
+        setIsModalOpen(true);
+    };
+    // --- ^^^ 新增：處理 Modal 開關的狀態 ^^^ ---
+
+
     const noLayoutRoutes = ['/'];
     if (noLayoutRoutes.includes(pathname)) {
         return <>{children}</>;
@@ -114,7 +138,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
 
     if (!user) {
-        // 在客戶端進行跳轉
         if(typeof window !== 'undefined') {
            window.location.href = '/';
         }
@@ -127,6 +150,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <main className="container mx-auto">
                 {children}
             </main>
+            {/* --- vvv 新增：將懸浮按鈕和 Modal 放在這裡，使其成為全域元件 vvv --- */}
+            <FloatingActionButton onAddRecord={handleAddRecord} />
+            {isModalOpen && modalConfig && (
+                <AddRecordModal
+                    recordType={modalConfig.type}
+                    initialData={modalConfig.initialData}
+                    onClose={() => setIsModalOpen(false)}
+                    babyProfile={babyProfile}
+                />
+            )}
+            {/* --- ^^^ 新增：將懸浮按鈕和 Modal 放在這裡，使其成為全域元件 ^^^ --- */}
         </div>
     );
 }

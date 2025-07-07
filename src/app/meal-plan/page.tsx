@@ -5,11 +5,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBabyProfile, BabyProfile } from '@/lib/babies';
-import { getMeasurementRecords, RecordData, CreatableRecordType } from '@/lib/records';
+import { getMeasurementRecords, saveMealPlan, getMealPlan, MealPlan, RecordData, CreatableRecordType } from '@/lib/records';
 import { mealPlanData, AgeStagePlan, Recipe, Ingredient, Macronutrients } from '@/data/mealPlanData';
 import { startOfWeek, endOfWeek, addDays, subDays, format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { PieChart, Pie, Tooltip, ResponsiveContainer } from 'recharts';
 import AddRecordModal from '@/components/AddRecordModal';
 import { Timestamp } from 'firebase/firestore';
 
@@ -17,13 +17,7 @@ import { Timestamp } from 'firebase/firestore';
 interface Meal { recipe: Recipe; grams: number; }
 interface DailyMenu { breakfast: Meal[]; lunch: Meal[]; dinner: Meal[]; snacks: Meal[]; }
 interface DailyPlan { feedCount: number; volumePerFeed: number; menu: DailyMenu; }
-
-const mealTypeToChinese: Record<keyof DailyMenu, string> = {
-    breakfast: '早餐',
-    lunch: '午餐',
-    dinner: '晚餐',
-    snacks: '點心'
-};
+const mealTypeToChinese: Record<keyof DailyMenu, string> = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snacks: '點心' };
 
 // --- 子元件 ---
 const ShoppingListModal = ({ plans, onClose }: { plans: Map<string, DailyPlan>, onClose: () => void }) => {
@@ -63,7 +57,7 @@ const ShoppingListModal = ({ plans, onClose }: { plans: Map<string, DailyPlan>, 
 };
 
 const calculateAgeInMonths = (birthDate: Date, targetDate: Date = new Date()): number => {
-    const diff = targetDate.getTime() - birthDate.getTime();
+    const diff = targetDate.getTime() - new Date(birthDate).getTime();
     return diff / (1000 * 60 * 60 * 24 * 30.4375);
 };
 
@@ -75,15 +69,12 @@ export default function MealPlanPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [weeklyPlans, setWeeklyPlans] = useState<Map<string, DailyPlan>>(new Map());
+    const [allSavedPlans, setAllSavedPlans] = useState<MealPlan>({});
     const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
     const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
     const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData: Partial<RecordData> } | null>(null);
 
-    const weekInterval = useMemo(() => ({
-        start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-        end: endOfWeek(currentDate, { weekStartsOn: 1 })
-    }), [currentDate]);
+    const weekInterval = useMemo(() => ({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }), [currentDate]);
     const daysInWeek = useMemo(() => eachDayOfInterval(weekInterval), [weekInterval]);
 
     const activeStage = useMemo((): AgeStagePlan | undefined => {
@@ -92,36 +83,52 @@ export default function MealPlanPage() {
         return mealPlanData.find(stage => ageInMonths >= stage.ageInMonthsStart && ageInMonths < stage.ageInMonthsEnd);
     }, [babyProfile, selectedDate]);
     
-    const generateDefaultMenu = useCallback((): DailyMenu => {
+    const generateDefaultPlan = useCallback((date: Date): DailyPlan => {
         const menu: DailyMenu = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-        if (!activeStage) return menu;
-        const { recipes } = activeStage;
-        const findRecipe = (cat: Recipe['category'], skip = 0) => recipes.filter(r => r.category === cat)[skip] || null;
+        if (activeStage) {
+            const dayOfWeek = date.getDay(); 
+            const { recipes } = activeStage;
+            const getRecipe = (cat: Recipe['category'], index: number) => {
+                const list = recipes.filter(r => r.category === cat);
+                if (list.length === 0) return null;
+                return list[index % list.length];
+            };
+            
+            const staple1 = getRecipe('staple', dayOfWeek);
+            const protein1 = getRecipe('protein', dayOfWeek);
+            const veggie1 = getRecipe('vegetable', dayOfWeek);
+            const fruit1 = getRecipe('fruit', dayOfWeek);
+            const protein2 = getRecipe('protein', dayOfWeek + 1) || protein1;
+            const veggie2 = getRecipe('vegetable', dayOfWeek + 1) || veggie1;
+            const fruit2 = getRecipe('fruit', dayOfWeek + 1) || fruit1;
 
-        const staple1 = findRecipe('staple');
-        const fruit1 = findRecipe('fruit');
-        const protein1 = findRecipe('protein');
-        const veggie1 = findRecipe('vegetable');
-        const protein2 = findRecipe('protein', 1) || protein1;
-        const veggie2 = findRecipe('vegetable', 1) || veggie1;
-        const fruit2 = findRecipe('fruit', 1) || fruit1;
-
-        if (staple1 && fruit1) menu.breakfast.push({ recipe: staple1, grams: 20 }, { recipe: fruit1, grams: 10 });
-        if (staple1 && protein1 && veggie1) menu.lunch.push({ recipe: staple1, grams: 30 }, { recipe: protein1, grams: 20 }, { recipe: veggie1, grams: 20 });
-        if (staple1 && protein2 && veggie2) menu.dinner.push({ recipe: staple1, grams: 30 }, { recipe: protein2, grams: 20 }, { recipe: veggie2, grams: 20 });
-        if (fruit2) menu.snacks.push({ recipe: fruit2, grams: 15 });
-        
-        return menu;
+            if (staple1 && fruit1) menu.breakfast.push({ recipe: staple1, grams: 20 }, { recipe: fruit1, grams: 10 });
+            if (staple1 && protein1 && veggie1) menu.lunch.push({ recipe: staple1, grams: 30 }, { recipe: protein1, grams: 20 }, { recipe: veggie1, grams: 20 });
+            if (staple1 && protein2 && veggie2) menu.dinner.push({ recipe: staple1, grams: 30 }, { recipe: protein2, grams: 20 }, { recipe: veggie2, grams: 20 });
+            if (fruit2) menu.snacks.push({ recipe: fruit2, grams: 15 });
+        }
+        return {
+            feedCount: activeStage?.defaultFeedCount || 6,
+            volumePerFeed: activeStage?.defaultVolumePerFeed || 150,
+            menu,
+        };
     }, [activeStage]);
 
     const selectedPlan = useMemo(() => {
         const dateKey = format(selectedDate, 'yyyy-MM-dd');
-        return weeklyPlans.get(dateKey) || {
-            feedCount: 6,
-            volumePerFeed: 150,
-            menu: generateDefaultMenu(),
-        };
-    }, [selectedDate, weeklyPlans, generateDefaultMenu]);
+        const savedPlan = allSavedPlans[dateKey];
+        if (savedPlan) {
+            const hydratedMenu: DailyMenu = { breakfast: [], lunch: [], dinner: [], snacks: [] };
+            (Object.keys(savedPlan.menu) as (keyof DailyMenu)[]).forEach(mealType => {
+                hydratedMenu[mealType] = savedPlan.menu[mealType].map(meal => ({
+                    grams: meal.grams,
+                    recipe: mealPlanData.flatMap(s => s.recipes).find(r => r.name === meal.recipeName)!,
+                })).filter(meal => meal.recipe);
+            });
+            return { ...savedPlan, menu: hydratedMenu };
+        }
+        return generateDefaultPlan(selectedDate);
+    }, [selectedDate, allSavedPlans, generateDefaultPlan]);
     
     const suggestedTotalCalories = useMemo(() => {
         if (!activeStage || !latestWeight) return 0;
@@ -159,13 +166,12 @@ export default function MealPlanPage() {
         if (authLoading || !userProfile?.familyIDs?.[0]) return;
         const familyId = userProfile.familyIDs[0];
         const babyId = 'baby_01';
-        Promise.all([getBabyProfile(babyId), getMeasurementRecords(familyId, babyId)])
-            .then(([profile, records]) => {
-                if (profile) {
-                    setBabyProfile(profile);
-                    const weightRecords = records.filter(r => r.measurementType === 'weight');
-                    if (weightRecords.length > 0) setLatestWeight(weightRecords[weightRecords.length - 1].value!);
-                }
+        Promise.all([getBabyProfile(babyId), getMeasurementRecords(familyId, babyId), getMealPlan(familyId)])
+            .then(([profile, records, savedPlan]) => {
+                if (profile) setBabyProfile(profile);
+                const weightRecords = records.filter(r => r.measurementType === 'weight');
+                if (weightRecords.length > 0) setLatestWeight(weightRecords[weightRecords.length - 1].value!);
+                if (savedPlan) setAllSavedPlans(savedPlan);
             }).catch(console.error).finally(() => setIsLoading(false));
     }, [userProfile, authLoading]);
 
@@ -176,11 +182,29 @@ export default function MealPlanPage() {
 
     const updatePlan = useCallback((updates: Partial<DailyPlan>) => {
         const dateKey = format(selectedDate, 'yyyy-MM-dd');
-        const newPlans = new Map(weeklyPlans);
-        const currentPlan = newPlans.get(dateKey) || selectedPlan;
-        newPlans.set(dateKey, { ...currentPlan, ...updates });
-        setWeeklyPlans(newPlans);
-    }, [selectedDate, weeklyPlans, selectedPlan]);
+        setAllSavedPlans(prevPlans => {
+            const currentPlan = prevPlans[dateKey] || generateDefaultPlan(selectedDate);
+            const updatedPlan = { ...currentPlan, ...updates };
+
+            const menuToSave = Object.fromEntries(
+                Object.entries(updatedPlan.menu).map(([mealType, meals]) => [
+                    mealType,
+                    (meals as Meal[]).map(meal => ({
+                        recipeName: meal.recipe.name,
+                        grams: meal.grams
+                    }))
+                ])
+            ) as { [key in keyof DailyMenu]: { recipeName: string; grams: number; }[] };
+
+            return {
+                ...prevPlans,
+                [dateKey]: {
+                    ...updatedPlan,
+                    menu: menuToSave
+                }
+            };
+        });
+    }, [selectedDate, generateDefaultPlan]);
 
     const handleMealChange = useCallback((mealType: keyof DailyMenu, index: number, field: keyof Meal, value: any) => {
         const newMenu = { ...selectedPlan.menu };
@@ -196,12 +220,24 @@ export default function MealPlanPage() {
 
     const copyYesterdayPlan = useCallback(() => {
         const yesterdayKey = format(subDays(selectedDate, 1), 'yyyy-MM-dd');
-        const yesterdayPlan = weeklyPlans.get(yesterdayKey);
+        const yesterdayPlan = allSavedPlans[yesterdayKey];
         if (yesterdayPlan) {
-            updatePlan(yesterdayPlan);
+            const todayKey = format(selectedDate, 'yyyy-MM-dd');
+            setAllSavedPlans(prev => ({...prev, [todayKey]: yesterdayPlan}));
             alert('已成功複製昨日設定！');
         } else alert('昨日沒有可複製的餐食計畫。');
-    }, [selectedDate, weeklyPlans, updatePlan]);
+    }, [selectedDate, allSavedPlans]);
+
+    const handleSavePlan = async () => {
+        if (!userProfile?.familyIDs?.[0]) return alert("無法獲取家庭資訊！");
+        try {
+            await saveMealPlan(userProfile.familyIDs[0], allSavedPlans);
+            alert("本週計畫已成功儲存！");
+        } catch (error) {
+            console.error("儲存計畫失敗:", error);
+            alert("儲存失敗，請稍後再試。");
+        }
+    };
 
     const checkAllergen = useCallback((recipe: Recipe): boolean => {
         if (!babyProfile?.knownAllergens || !recipe.allergens) return false;
@@ -213,9 +249,10 @@ export default function MealPlanPage() {
 
     return (
         <>
-            {isShoppingListModalOpen && activeStage && <ShoppingListModal plans={weeklyPlans} onClose={() => setIsShoppingListModalOpen(false)} />}
+            {isShoppingListModalOpen && <ShoppingListModal plans={new Map(Object.entries(allSavedPlans).map(([key, value]) => [key, selectedPlan]))} onClose={() => setIsShoppingListModalOpen(false)} />}
             {isRecordModalOpen && modalConfig && <AddRecordModal recordType={modalConfig.type} initialData={modalConfig.initialData} onClose={() => setIsRecordModalOpen(false)} babyProfile={babyProfile} />}
             <div className="p-4 md:p-8">
+                {/* Header and Date Navigation */}
                 <div className="flex justify-between items-center mb-4">
                     <button onClick={() => setCurrentDate(subDays(currentDate, 7))} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">&larr;</button>
                     <h1 className="text-xl md:text-2xl font-bold text-center">{format(weekInterval.start, 'yyyy年M月d日')} - {format(weekInterval.end, 'M月d日')}</h1>
@@ -223,8 +260,8 @@ export default function MealPlanPage() {
                 </div>
                 
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mb-8 relative">
-                    <div className="bg-blue-400 h-2.5 rounded-full" style={{ width: `${((calculateAgeInMonths(babyProfile.birthDate) / 12)) * 100}%` }}></div>
-                    <span className="text-xs absolute -bottom-5 transform -translate-x-1/2" style={{left: `${((calculateAgeInMonths(babyProfile.birthDate) / 12)) * 100}%`}}>寶寶現在在這！</span>
+                    <div className="bg-blue-400 h-2.5 rounded-full" style={{ width: `${(calculateAgeInMonths(babyProfile.birthDate) / 12) * 100}%` }}></div>
+                    <span className="text-xs absolute -bottom-5 transform -translate-x-1/2" style={{left: `${(calculateAgeInMonths(babyProfile.birthDate) / 12) * 100}%`}}>寶寶現在在這！</span>
                 </div>
 
                 <div className="flex overflow-x-auto space-x-2 pb-4 mb-8">
@@ -246,23 +283,30 @@ export default function MealPlanPage() {
                         <div className="p-4 bg-white rounded-lg shadow-sm">
                              <h3 className="font-semibold text-gray-500 mb-2">副食品營養素佔比 (熱量估算)</h3>
                              <ResponsiveContainer width="100%" height={150}>
-                                <PieChart>
-                                    {/* --- vvv 這裡是本次修改的重點 vvv --- */}
-                                    <Pie data={nutrientPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} labelLine={false} label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`} />
-                                    {/* --- ^^^ 這裡是本次修改的重點 ^^^ --- */}
-                                    <Tooltip />
-                                </PieChart>
+                                <PieChart><Pie data={nutrientPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} labelLine={false} label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`} /><Tooltip /></PieChart>
                              </ResponsiveContainer>
                         </div>
                         <div className="p-6 bg-white rounded-lg shadow-sm border-t-4 border-indigo-400"><h3 className="font-semibold text-gray-500">當日實際攝取量 (來自照護紀錄)</h3><p className="text-center text-gray-400 py-8 text-sm">此處未來將顯示實際紀錄與計畫的達成率圖表。</p></div>
                     </div>
                     <div className="lg:col-span-2 p-6 bg-white rounded-lg shadow-sm space-y-6">
-                        <div className="flex justify-between items-center"><h2 className="text-xl font-bold">每日計畫：{format(selectedDate, 'M月d日')}</h2><div className="flex gap-2"><button onClick={copyYesterdayPlan} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-300">複製昨日</button><button onClick={() => setIsShoppingListModalOpen(true)} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-green-700">採買清單</button></div></div>
+                        <div className="flex justify-between items-center"><h2 className="text-xl font-bold">每日計畫：{format(selectedDate, 'M月d日')}</h2>
+                            <div className="flex gap-2">
+                                <button onClick={copyYesterdayPlan} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-300">複製昨日</button>
+                                <button onClick={() => setIsShoppingListModalOpen(true)} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-green-700">採買清單</button>
+                                <button onClick={handleSavePlan} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-blue-700">儲存本週計畫</button>
+                            </div>
+                        </div>
                         <div className="p-4 border rounded-md">
-                            <div className="flex justify-between items-center mb-2"><h4 className="font-semibold">奶類</h4><button onClick={() => handleRecordClick('feeding', { amount: selectedPlan.volumePerFeed })} className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded hover:bg-blue-200 flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>紀錄</button></div>
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-baseline gap-2">
+                                    <h4 className="font-semibold">奶類</h4>
+                                    <span className="text-xs text-white px-2 py-0.5 rounded-full bg-blue-400">{babyProfile.milkType === 'breast' ? '母乳' : babyProfile.milkType === 'formula' ? `配方奶 (${babyProfile.formulaBrand || '未設定品牌'})` : '混合餵養'}</span>
+                                </div>
+                                <button onClick={() => handleRecordClick('feeding', { amount: selectedPlan.volumePerFeed })} className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded hover:bg-blue-200 flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" /></svg>紀錄</button>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">餵奶次數</label><input id="feedCount" type="number" min="1" max="12" value={selectedPlan.feedCount} onChange={(e) => updatePlan({ feedCount: Number(e.target.value) })} className="mt-1 w-full p-2 border rounded"/></div>
-                                <div><label htmlFor="volumePerFeed" className="block text-sm font-medium text-gray-700">每次奶量(ml)</label><input id="volumePerFeed" type="number" min="30" max="300" step="10" value={selectedPlan.volumePerFeed} onChange={(e) => updatePlan({ volumePerFeed: Number(e.target.value) })} className="mt-1 w-full p-2 border rounded"/></div>
+                                <div><label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">餵奶次數</label><input id="feedCount" type="number" min="1" max="12" value={selectedPlan.feedCount} onChange={(e) => updatePlan({ ...selectedPlan, feedCount: Number(e.target.value) })} className="mt-1 w-full p-2 border rounded"/></div>
+                                <div><label htmlFor="volumePerFeed" className="block text-sm font-medium text-gray-700">每次奶量(ml)</label><input id="volumePerFeed" type="number" min="30" max="300" step="10" value={selectedPlan.volumePerFeed} onChange={(e) => updatePlan({ ...selectedPlan, volumePerFeed: Number(e.target.value) })} className="mt-1 w-full p-2 border rounded"/></div>
                             </div>
                         </div>
                         <div className="p-4 border rounded-md">

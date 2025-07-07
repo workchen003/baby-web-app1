@@ -1,6 +1,5 @@
 // src/data/mealPlanData.ts
 
-// --- vvv 確保所有 interface 都有匯出 vvv ---
 export interface Ingredient {
   name: string;
 }
@@ -19,7 +18,6 @@ export interface Recipe {
   ingredients: Ingredient[];
   nutrientsPer100g: Macronutrients;
 }
-// --- ^^^ 確保所有 interface 都有匯出 ^^^ ---
 
 export interface AgeStagePlan {
   stage: string;
@@ -27,6 +25,10 @@ export interface AgeStagePlan {
   ageInMonthsEnd: number;
   caloriesPerKg: number;
   recipes: Recipe[];
+  // --- vvv 新增：適齡的奶量與餐數建議 vvv ---
+  defaultFeedCount: number;
+  defaultVolumePerFeed: number;
+  // --- ^^^ 新增：適齡的奶量與餐數建議 ^^^ ---
 }
 
 export const mealPlanData: AgeStagePlan[] = [
@@ -35,6 +37,8 @@ export const mealPlanData: AgeStagePlan[] = [
     ageInMonthsStart: 4,
     ageInMonthsEnd: 6.9,
     caloriesPerKg: 100,
+    defaultFeedCount: 6,
+    defaultVolumePerFeed: 180,
     recipes: [
       { name: '十倍粥', category: 'staple', caloriesPerGram: 0.36, ingredients: [{name: '米'}], nutrientsPer100g: { carbs: 8, protein: 0.7, fat: 0.1 } },
       { name: '蘋果泥', category: 'fruit', caloriesPerGram: 0.52, ingredients: [{name: '蘋果'}], nutrientsPer100g: { carbs: 14, protein: 0.3, fat: 0.2 } },
@@ -48,6 +52,8 @@ export const mealPlanData: AgeStagePlan[] = [
     ageInMonthsStart: 7,
     ageInMonthsEnd: 9.9,
     caloriesPerKg: 95,
+    defaultFeedCount: 5,
+    defaultVolumePerFeed: 210,
     recipes: [
       { name: '七倍粥', category: 'staple', caloriesPerGram: 0.51, ingredients: [{name: '米'}], nutrientsPer100g: { carbs: 11, protein: 1, fat: 0.1 } },
       { name: '雞肉泥', category: 'protein', caloriesPerGram: 1.65, ingredients: [{name: '雞胸肉'}], nutrientsPer100g: { carbs: 0, protein: 31, fat: 3.6 } },
@@ -62,6 +68,8 @@ export const mealPlanData: AgeStagePlan[] = [
     ageInMonthsStart: 10,
     ageInMonthsEnd: 12.9,
     caloriesPerKg: 90,
+    defaultFeedCount: 4,
+    defaultVolumePerFeed: 240,
     recipes: [
       { name: '軟飯', category: 'staple', caloriesPerGram: 1.3, ingredients: [{name: '米'}], nutrientsPer100g: { carbs: 28, protein: 2.7, fat: 0.3 } },
       { name: '寶寶炊飯', category: 'staple', caloriesPerGram: 1.1, ingredients: [{name: '米'}, {name: '胡蘿蔔'}, {name: '雞肉'}], nutrientsPer100g: { carbs: 20, protein: 5, fat: 1 } },
@@ -76,6 +84,8 @@ export const mealPlanData: AgeStagePlan[] = [
     ageInMonthsStart: 13,
     ageInMonthsEnd: 36,
     caloriesPerKg: 85,
+    defaultFeedCount: 3,
+    defaultVolumePerFeed: 240,
     recipes: [
         { name: '乾飯', category: 'staple', caloriesPerGram: 1.3, ingredients: [{name: '米'}], nutrientsPer100g: { carbs: 28, protein: 2.7, fat: 0.3 } },
         { name: '寶寶麵', category: 'staple', caloriesPerGram: 1.38, allergens: ['gluten'], ingredients: [{name: '麵粉'}], nutrientsPer100g: { carbs: 25, protein: 10, fat: 1.5 } },
