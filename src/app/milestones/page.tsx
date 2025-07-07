@@ -1,5 +1,4 @@
 // src/app/milestones/page.tsx
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -10,60 +9,50 @@ import { getBabyProfile, BabyProfile } from '@/lib/babies';
 import { getAchievedMilestones, AchievedMilestone } from '@/lib/milestones';
 import MilestoneChart from '@/components/MilestoneChart';
 import RadarChart from '@/components/RadarChart';
-import milestonesData from '@/data/milestones_processed.json'; // 引入原始資料
+import milestonesData from '@/data/milestones_processed.json'; 
 
-// --- 新增輔助函式 ---
 const daysToMonths = (days: number) => days / 30.4375;
 
-// JSON 資料的型別定義
 interface Milestone { skill: string; start_days: number; end_days: number; }
 interface Category { name: string; milestones: Milestone[]; }
 interface MilestoneData { categories: Category[]; }
 const typedMilestonesData: MilestoneData = milestonesData;
 
 export default function MilestonesPage() {
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [babyProfile, setBabyProfile] = useState<BabyProfile | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Map<string, AchievedMilestone>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
-
-  // --- 新增狀態：管理顯示的月份 ---
   const [displayMonth, setDisplayMonth] = useState(0);
   
   const babyId = 'baby_01'; 
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.replace('/');
-      return;
-    }
-    if (userProfile && userProfile.familyIDs) {
-      const familyId = userProfile.familyIDs[0];
-      
-      Promise.all([
-        getBabyProfile(babyId),
-        getAchievedMilestones(familyId, babyId),
-      ]).then(([profile, achievements]) => {
-        if (profile) {
-          setBabyProfile(profile);
-          setAchievedMilestones(achievements);
-          // 初始化顯示月份為寶寶目前月齡
-          const ageInDays = (new Date().getTime() - new Date(profile.birthDate).getTime()) / (1000 * 60 * 60 * 24);
-          setDisplayMonth(Math.round(daysToMonths(ageInDays)));
-        } else {
-          router.push('/baby/edit');
-        }
-      }).catch(console.error).finally(() => setIsLoading(false));
-    }
-  }, [user, userProfile, authLoading, router]);
+  const familyId = userProfile?.familyIDs?.[0];
+  if (authLoading || !familyId) {
+    return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
+  }
   
-  // --- 新增邏輯：根據 displayMonth 篩選要顯示的里程碑 ---
+  useEffect(() => {
+    Promise.all([
+      getBabyProfile(babyId),
+      getAchievedMilestones(familyId, babyId),
+    ]).then(([profile, achievements]) => {
+      if (profile) {
+        setBabyProfile(profile);
+        setAchievedMilestones(achievements);
+        const ageInDays = (new Date().getTime() - new Date(profile.birthDate).getTime()) / (1000 * 60 * 60 * 24);
+        setDisplayMonth(Math.round(daysToMonths(ageInDays)));
+      } else {
+        router.push('/baby/edit');
+      }
+    }).catch(console.error).finally(() => setIsLoading(false));
+  }, [familyId, router]);
+  
   const filteredMilestoneData = useMemo(() => {
     const windowStart = displayMonth - 1;
-    const windowEnd = displayMonth + 2; // 顯示前後一個月，總共三個月的區間
+    const windowEnd = displayMonth + 2; 
     
     const filteredCategories = new Map<string, any[]>();
 
@@ -71,7 +60,6 @@ export default function MilestonesPage() {
       const filteredMilestones = category.milestones.filter(milestone => {
         const start = daysToMonths(milestone.start_days);
         const end = daysToMonths(milestone.end_days === -1 ? milestone.start_days + 730 : milestone.end_days);
-        // 判斷里程碑區間是否與顯示視窗重疊
         return Math.max(start, windowStart) < Math.min(end, windowEnd);
       });
 
@@ -90,8 +78,7 @@ export default function MilestonesPage() {
     setDisplayMonth(prev => prev + 1);
   };
 
-
-  if (authLoading || isLoading) {
+  if (isLoading) {
     return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
   }
   
@@ -129,7 +116,6 @@ export default function MilestonesPage() {
         </div>
       </div>
 
-      {/* 發展進度細節圖表 */}
       <div className="p-4 bg-white rounded-lg shadow-md">
         <div className="flex justify-between items-center mb-4">
             <button onClick={handlePrevMonth} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">

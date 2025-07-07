@@ -32,38 +32,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // **關鍵邏輯**：此函式負責在使用者登入時，同步其在 Firestore 中的資料。
   const syncUserData = useCallback(async (currentUser: User): Promise<UserProfile> => {
     const userRef = doc(db, 'users', currentUser.uid);
     const userDoc = await getDoc(userRef);
 
+    // 如果使用者文件不存在（代表是第一次登入）
     if (!userDoc.exists()) {
+      console.log(`User profile for ${currentUser.uid} not found. Creating new profile.`);
       const newUserProfile: UserProfile = {
         uid: currentUser.uid,
         email: currentUser.email,
         displayName: currentUser.displayName,
         familyIDs: [],
-        role: 'user',
+        role: 'user', // 預設角色
       };
-      await setDoc(userRef, { 
-        ...newUserProfile, 
-        lastLogin: serverTimestamp(),
+      
+      // **建立文件**：這個 setDoc 操作將被新的安全規則所允許。
+      await setDoc(userRef, {
+        ...newUserProfile,
         createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
       });
       return newUserProfile;
     } else {
+      // 如果文件已存在，則更新最後登入時間並回傳資料
       const existingData = userDoc.data() as UserProfile;
-      const dataToUpdate: Partial<UserProfile> = {
-        lastLogin: serverTimestamp(),
-      };
-      let roleToReturn = existingData.role;
-
-      if (!existingData.role) {
-        dataToUpdate.role = 'user';
-        roleToReturn = 'user';
-      }
-      
-      await setDoc(userRef, dataToUpdate, { merge: true });
-      return { ...existingData, role: roleToReturn };
+      await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
+      return existingData;
     }
   }, []);
 
@@ -89,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setUserProfile(null);
         }
-      } catch (error: unknown) { // <-- 修正點一：明確指定 error 型別
+      } catch (error: unknown) {
         console.error("Error during auth state change:", error);
         setUser(null);
         setUserProfile(null);
@@ -98,9 +94,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    return () => {
-      unsubscribe(); // 修正點二：確保 cleanup 函式有實際作用
-    };
+    return () => unsubscribe();
   }, [syncUserData]);
 
   const value = { user, userProfile, loading, refetchUserProfile };

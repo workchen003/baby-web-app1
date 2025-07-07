@@ -1,3 +1,4 @@
+// src/app/growth/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -9,11 +10,10 @@ import GrowthChart from '@/components/GrowthChart';
 import Link from 'next/link';
 import { DocumentData } from 'firebase/firestore';
 
-// --- 新增：BMI 也加入 Metric 型別中 ---
 type Metric = 'weight' | 'height' | 'headCircumference' | 'bmi';
 
 export default function GrowthPage() {
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [babyProfile, setBabyProfile] = useState<BabyProfile | null>(null);
@@ -21,36 +21,33 @@ export default function GrowthPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeMetric, setActiveMetric] = useState<Metric>('weight');
 
-  const babyId = 'baby_01'; // 暫時寫死
+  const babyId = 'baby_01'; 
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.replace('/');
-      return;
-    }
-    if (userProfile && userProfile.familyIDs) {
-      const familyId = userProfile.familyIDs[0];
-      Promise.all([
-        getBabyProfile(babyId),
-        getMeasurementRecords(familyId, babyId)
-      ]).then(([profile, measurementRecords]) => {
-        if (profile) {
-          setBabyProfile(profile);
-          // 在這裡可以加入 BMI 的計算邏輯，並將其加入 records 中
-          // 暫時我們先專注於顯示，BMI 紀錄先假設為空
-          setRecords(measurementRecords);
-        } else {
-          router.push('/baby/edit');
-        }
-      }).catch(console.error).finally(() => setIsLoading(false));
-    }
-  }, [user, userProfile, authLoading, router]);
-
-  if (authLoading || isLoading) {
+  const familyId = userProfile?.familyIDs?.[0];
+  if (authLoading || !familyId) {
     return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
   }
+  
+  useEffect(() => {
+    // 現在 familyId 絕對存在
+    Promise.all([
+      getBabyProfile(babyId),
+      getMeasurementRecords(familyId, babyId)
+    ]).then(([profile, measurementRecords]) => {
+      if (profile) {
+        setBabyProfile(profile);
+        setRecords(measurementRecords);
+      } else {
+        router.push('/baby/edit');
+      }
+    }).catch(console.error).finally(() => setIsLoading(false));
 
+  }, [familyId, router]);
+
+  if (isLoading) {
+    return <div className="flex min-h-screen items-center justify-center">正在載入寶寶資料...</div>;
+  }
+  
   if (!babyProfile) {
     return (
         <div className="flex flex-col min-h-screen items-center justify-center text-center">
@@ -75,7 +72,6 @@ export default function GrowthPage() {
           <button onClick={() => setActiveMetric('weight')} className={`px-4 py-2 text-sm font-medium ${activeMetric === 'weight' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>體重</button>
           <button onClick={() => setActiveMetric('height')} className={`px-4 py-2 text-sm font-medium ${activeMetric === 'height' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>身高/身長</button>
           <button onClick={() => setActiveMetric('headCircumference')} className={`px-4 py-2 text-sm font-medium ${activeMetric === 'headCircumference' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>頭圍</button>
-          {/* --- 新增：BMI 切換按鈕 --- */}
           <button onClick={() => setActiveMetric('bmi')} className={`px-4 py-2 text-sm font-medium ${activeMetric === 'bmi' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>BMI</button>
         </div>
       </div>

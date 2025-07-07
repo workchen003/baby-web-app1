@@ -17,8 +17,8 @@ const recordIcons: { [key: string]: React.ReactNode } = {
     'solid-food': <Soup className="h-5 w-5 text-orange-500" />,
     measurement: <Ruler className="h-5 w-5 text-purple-500" />,
     sleep: <Moon className="h-5 w-5 text-indigo-500" />,
-    vitamin: <Sun className="h-5 w-5 text-yellow-500" />, // 假設
-    medicine: <Syringe className="h-5 w-5 text-red-500" />, // 假設
+    vitamin: <Sun className="h-5 w-5 text-yellow-500" />, 
+    medicine: <Syringe className="h-5 w-5 text-red-500" />, 
     default: <Droplets className="h-5 w-5 text-gray-500" />,
 };
 
@@ -32,21 +32,19 @@ const filterButtons: { type: FilterType, label: string, icon: React.ReactNode }[
 ];
 
 export default function TimelinePage() {
-    const { user, userProfile, loading } = useAuth();
+    const { userProfile, loading: authLoading } = useAuth();
     const router = useRouter();
 
     const [allRecords, setAllRecords] = useState<DocumentData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filter, setFilter] = useState<FilterType>('all');
 
-    useEffect(() => {
-        if (loading) return;
-        if (!user || !userProfile?.familyIDs?.[0]) {
-            router.replace('/');
-            return;
-        }
+    const familyId = userProfile?.familyIDs?.[0];
+    if (authLoading || !familyId) {
+        return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">正在驗證使用者與家庭資料...</div>;
+    }
 
-        const familyId = userProfile.familyIDs[0];
+    useEffect(() => {
         const constraints = [
             where("familyId", "==", familyId),
             orderBy("timestamp", "desc")
@@ -65,10 +63,13 @@ export default function TimelinePage() {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAllRecords(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsLoading(false);
+        }, (error) => {
+            console.error("Timeline snapshot error:", error);
+            setIsLoading(false);
         });
 
         return () => unsubscribe();
-    }, [user, userProfile, loading, router, filter]);
+    }, [familyId, filter]);
 
     const handleDelete = async (recordId: string) => {
         if (window.confirm('您確定要刪除這筆紀錄嗎？')) {
@@ -129,4 +130,3 @@ export default function TimelinePage() {
         </div>
     );
 }
-

@@ -8,6 +8,28 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 admin.initializeApp();
 const db = admin.firestore();
 
+export const createProfileOnSignUp = functions
+  .region("asia-east1") // 指定您的 Functions 區域
+  .auth.user()
+  .onCreate((user) => {
+    const { uid, email, displayName, photoURL } = user;
+    const userRef = db.collection("users").doc(uid);
+
+    console.log(`New user signed up: ${uid}. Creating profile.`);
+
+    // 使用 set 建立新的使用者文件
+    return userRef.set({
+      uid: uid,
+      email: email,
+      displayName: displayName,
+      photoURL: photoURL,
+      familyIDs: [],
+      role: "user", // 預設角色
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
 // --- 既有的 onCall 函式 ---
 export const createInviteCode = onCall(async (request) => {
   if (!request.auth) {
