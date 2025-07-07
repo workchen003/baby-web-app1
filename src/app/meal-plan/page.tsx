@@ -1,72 +1,170 @@
 // src/app/meal-plan/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { DayPicker } from 'react-day-picker';
-import 'react-day-picker/dist/style.css';
-import { format } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { getBabyProfile, BabyProfile } from '@/lib/babies';
+// --- vvv 這裡是本次修改的重點 vvv ---
+import { getMeasurementRecords, RecordData } from '@/lib/records'; // 引入我們定義好的 RecordData 型別
+import { mealPlanData, AgeStagePlan } from '@/data/mealPlanData';
 
-const dailyPlanData = {
-    // 這是範例資料，未來會從資料庫讀取
-    '2025-06-30': { meals: 5, perMealMl: 230, totalMl: 1150, solidFoodG: 80, kcal: 789, targetKcal: 804 },
-    '2025-07-01': { meals: 5, perMealMl: 230, totalMl: 1150, solidFoodG: 80, kcal: 789, targetKcal: 804 },
-    '2025-07-02': { meals: 5, perMealMl: 230, totalMl: 1150, solidFoodG: 80, kcal: 789, targetKcal: 804 },
+// 輔助函式：計算月齡 (簡易版)
+const calculateAgeInMonths = (birthDate: Date): number => {
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age_y = today.getFullYear() - birth.getFullYear();
+    let age_m = today.getMonth() - birth.getMonth();
+    if (today.getDate() < birth.getDate()) {
+        age_m--;
+    }
+    if (age_m < 0) {
+        age_y--;
+        age_m += 12;
+    }
+    return age_y * 12 + age_m;
 };
 
 export default function MealPlanPage() {
-    const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date());
+    const { user, userProfile, loading: authLoading } = useAuth();
+
+    const [babyProfile, setBabyProfile] = useState<BabyProfile | null>(null);
+    const [latestWeight, setLatestWeight] = useState<number | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const [feedCount, setFeedCount] = useState(6);
+    const [volumePerFeed, setVolumePerFeed] = useState(150);
+    const [solidFoodGrams, setSolidFoodGrams] = useState(50);
+
+    const activeStage = useMemo((): AgeStagePlan | undefined => {
+        if (!babyProfile) return undefined;
+        const ageInMonths = calculateAgeInMonths(babyProfile.birthDate);
+        return mealPlanData.find(stage => ageInMonths >= stage.ageInMonthsStart && ageInMonths < stage.ageInMonthsEnd);
+    }, [babyProfile]);
+
+    const suggestedTotalCalories = useMemo(() => {
+        if (!activeStage || !latestWeight) return 0;
+        return Math.round(latestWeight * activeStage.caloriesPerKg);
+    }, [activeStage, latestWeight]);
+
+    const actualTotalCalories = useMemo(() => {
+        if (!babyProfile || !activeStage) return 0;
+        const breastMilkCaloriesPerMl = 0.67;
+        
+        let milkCalories = 0;
+        if (babyProfile.milkType === 'breast') {
+            milkCalories = feedCount * volumePerFeed * breastMilkCaloriesPerMl;
+        } else if (babyProfile.milkType === 'formula' && babyProfile.formulaCalories) {
+            milkCalories = feedCount * volumePerFeed * (babyProfile.formulaCalories / 100);
+        } else if (babyProfile.milkType === 'mixed') {
+            milkCalories = feedCount * volumePerFeed * (babyProfile.formulaCalories ? babyProfile.formulaCalories / 100 : breastMilkCaloriesPerMl);
+        }
+
+        const solidFoodCalories = solidFoodGrams * (activeStage.recipes[0]?.caloriesPerGram || 0.5);
+
+        return Math.round(milkCalories + solidFoodCalories);
+    }, [babyProfile, activeStage, feedCount, volumePerFeed, solidFoodGrams]);
+
+    const calorieDifference = useMemo(() => actualTotalCalories - suggestedTotalCalories, [actualTotalCalories, suggestedTotalCalories]);
+
+    useEffect(() => {
+        if (authLoading || !userProfile?.familyIDs?.[0]) return;
+        
+        const familyId = userProfile.familyIDs[0];
+        const babyId = 'baby_01';
+
+        Promise.all([
+            getBabyProfile(babyId),
+            getMeasurementRecords(familyId, babyId)
+        ]).then(([profile, records]) => {
+            if (profile) {
+                setBabyProfile(profile);
+                const weightRecords = records.filter(r => r.measurementType === 'weight');
+                if (weightRecords.length > 0) {
+                    // 使用驚嘆號 (!) 告訴 TypeScript 我們確定 value 存在，因為 filter 已經確保了這一點
+                    setLatestWeight(weightRecords[weightRecords.length - 1].value!);
+                }
+            }
+        }).catch(console.error).finally(() => setIsLoading(false));
+
+    }, [userProfile, authLoading]);
+
+    const getDiffColor = () => {
+        const percentageDiff = suggestedTotalCalories > 0 ? Math.abs(calorieDifference) / suggestedTotalCalories : 0;
+        if (percentageDiff < 0.1) return 'text-green-600';
+        if (calorieDifference > 0) return 'text-orange-500';
+        return 'text-blue-500';
+    }
+
+    if (isLoading) {
+        return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">載入中...</div>;
+    }
     
-    const footer = selectedDay ? <p>您選擇了 {format(selectedDay, 'PPP', { locale: zhTW })}.</p> : <p>請選擇一個日期.</p>;
+    if (!babyProfile || !latestWeight) {
+        return (
+            <div className="text-center p-8">
+                <p>無法讀取寶寶的資料或最新體重紀錄，請先至「寶寶資料」與「照護紀錄」頁面新增。</p>
+                <Link href="/baby/edit" className="text-blue-600 hover:underline">前往設定寶寶資料</Link>
+            </div>
+        )
+    }
 
     return (
         <div className="p-4 md:p-8">
-            <h1 className="text-3xl font-bold mb-8">餐食規劃</h1>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* 左側日曆 */}
-                <div className="lg:col-span-1 bg-white p-4 rounded-lg shadow-sm">
-                    <DayPicker
-                        mode="single"
-                        selected={selectedDay}
-                        onSelect={setSelectedDay}
-                        month={currentMonth}
-                        onMonthChange={setCurrentMonth}
-                        locale={zhTW}
-                        showOutsideDays
-                        fixedWeeks
-                    />
-                     <div className="mt-4 text-center text-sm text-gray-500">{footer}</div>
-                </div>
-                {/* 右側規劃列表 */}
-                <div className="lg:col-span-2 space-y-4">
-                    <div className="bg-white p-4 rounded-lg shadow-sm flex justify-between items-center">
-                        <div>
-                            <p className="text-sm text-gray-500">每日建議總熱量</p>
-                            <p className="text-2xl font-bold">804 kcal</p>
-                        </div>
-                         <button className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm">一鍵配平</button>
-                    </div>
+            <h1 className="text-3xl font-bold mb-2">餐食規劃</h1>
+            <p className="text-gray-600 mb-8">根據寶寶最新體重與月齡，提供個人化的餐食建議</p>
 
-                    {Object.entries(dailyPlanData).map(([date, plan]) => (
-                        <div key={date} className="bg-white p-4 rounded-lg shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <p className="font-semibold">{format(new Date(date), 'M月d日 EEEE', { locale: zhTW })}</p>
-                                <p className="font-bold text-lg">{plan.kcal} / {plan.targetKcal} kcal</p>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
-                                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${(plan.kcal/plan.targetKcal)*100}%` }}></div>
-                            </div>
-                            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                <p>餐數: {plan.meals}餐</p>
-                                <p>每餐: {plan.perMealMl}ml</p>
-                                <p>總奶量: {plan.totalMl}ml</p>
-                                <p>副食品: {plan.solidFoodG}g</p>
-                            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1 space-y-6">
+                    <div className="p-6 bg-white rounded-lg shadow-sm">
+                        <h3 className="font-semibold text-gray-500">當前階段</h3>
+                        <p className="text-2xl font-bold text-blue-600">{activeStage?.stage}</p>
+                    </div>
+                    <div className="p-6 bg-white rounded-lg shadow-sm">
+                        <h3 className="font-semibold text-gray-500">每日建議總熱量</h3>
+                        <p className="text-2xl font-bold">{suggestedTotalCalories} kcal</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                            (依據 {latestWeight}kg x {activeStage?.caloriesPerKg}kcal/kg 推算)
+                        </p>
+                    </div>
+                    <div className="p-6 bg-white rounded-lg shadow-sm">
+                        <h3 className="font-semibold text-gray-500">目前規劃總熱量</h3>
+                        <p className="text-2xl font-bold">{actualTotalCalories} kcal</p>
+                        <p className={`text-sm font-semibold mt-1 ${getDiffColor()}`}>
+                           {calorieDifference === 0 ? '完美達成！' : `與建議相差 ${calorieDifference} kcal`}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="lg:col-span-2 p-6 bg-white rounded-lg shadow-sm space-y-6">
+                    <div>
+                        <label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">每日餵奶次數</label>
+                        <input id="feedCount" type="range" min="3" max="12" step="1" value={feedCount} onChange={(e) => setFeedCount(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                        <p className="text-center font-bold">{feedCount} 次</p>
+                    </div>
+                     <div>
+                        <label htmlFor="volumePerFeed" className="block text-sm font-medium text-gray-700">每次奶量 (ml)</label>
+                        <input id="volumePerFeed" type="range" min="60" max="300" step="10" value={volumePerFeed} onChange={(e) => setVolumePerFeed(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                        <p className="text-center font-bold">{volumePerFeed} ml</p>
+                    </div>
+                    <div>
+                        <label htmlFor="solidFoodGrams" className="block text-sm font-medium text-gray-700">每日副食品總量 (g)</label>
+                        <input id="solidFoodGrams" type="range" min="0" max="300" step="10" value={solidFoodGrams} onChange={(e) => setSolidFoodGrams(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                        <p className="text-center font-bold">{solidFoodGrams} g</p>
+                    </div>
+                    <div className="pt-6 border-t">
+                        <h4 className="text-lg font-semibold mb-2">本階段建議副食品</h4>
+                        <div className="flex flex-wrap gap-2">
+                           {activeStage?.recipes.map(recipe => (
+                               <span key={recipe.name} className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+                                   {recipe.name}
+                               </span>
+                           ))}
                         </div>
-                    ))}
+                    </div>
                 </div>
             </div>
         </div>
     );
 }
+// --- ^^^ 整個檔案都被更新了 ^^^ ---

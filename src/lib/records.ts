@@ -21,54 +21,33 @@ import {
 } from 'firebase/firestore';
 import { UserProfile } from '@/contexts/AuthContext';
 
-export type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot' | 'pumping'; // 新增 'pumping'
+export type CreatableRecordType = 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'snapshot' | 'pumping';
 
-// --- vvv 這裡是本次修改的重點 vvv ---
 export interface RecordData extends DocumentData {
   familyId: string;
   babyId: string;
   creatorId: string;
   creatorName: string | null;
-  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'bmi' | 'snapshot' | 'pumping'; // 新增 'pumping'
+  type: 'feeding' | 'diaper' | 'sleep' | 'solid-food' | 'measurement' | 'bmi' | 'snapshot' | 'pumping';
   timestamp: Timestamp;
   notes?: string;
-
-  // For feeding
   amount?: number;
-  // **擴充餵奶紀錄欄位**
-  feedMethod?: 'breast' | 'formula'; // 該次餵食方式
-  formulaBrand?: string;              // 若為配方奶，其品牌
-  caloriesPerMl?: number;             // 若為配方奶，其當時的每毫升熱量
-
-  // For pumping
-  // (amount 欄位可共用)
-
-  // For diaper
+  feedMethod?: 'breast' | 'formula';
+  formulaBrand?: string;
+  caloriesPerMl?: number;
   diaperType?: ('wet' | 'dirty')[];
-
-  // For sleep
   startTime?: Timestamp;
   endTime?: Timestamp;
-
-  // For solid food
   foodItems?: string;
   reaction?: 'good' | 'neutral' | 'bad';
-
-  // For measurement or BMI
   measurementType?: 'height' | 'weight' | 'headCircumference';
   value?: number;
-
-  // For snapshot
   imageUrl?: string;
   tags?: string[];
   year?: number;
   month?: number;
 }
-// --- ^^^ 這裡是本次修改的重點 ^^^ ---
 
-/**
- * [修改] 新增一筆記錄到 Firestore，並修復了 serverTimestamp 的型別問題
- */
 export const addRecord = async (recordData: Partial<RecordData>, userProfile: UserProfile | null) => {
   if (!recordData.familyId || !recordData.creatorId) {
     throw new Error('Family ID and Creator ID are required.');
@@ -101,9 +80,6 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
 };
 
 
-/**
- * [修改] 獲取照片牆的紀錄，包含篩選和分頁功能，並修正了查詢建立方式
- */
 export const getSnapshots = async (
   familyId: string,
   options: {
@@ -154,8 +130,6 @@ export const getSnapshots = async (
   };
 };
 
-// --- 以下為既有函式 ---
-
 export const updateRecord = async (recordId: string, updatedData: Partial<RecordData>) => {
   if (!recordId) {
     throw new Error('Record ID is required for updating.');
@@ -184,7 +158,7 @@ export const deleteRecord = async (recordId: string) => {
   }
 };
 
-export const getMeasurementRecords = async (familyId: string, babyId: string) => {
+export const getMeasurementRecords = async (familyId: string, babyId: string): Promise<RecordData[]> => {
   const recordsRef = collection(db, 'records');
   const q = query(
     recordsRef,
@@ -195,5 +169,15 @@ export const getMeasurementRecords = async (familyId: string, babyId: string) =>
   );
 
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  // --- vvv 這裡是本次修改的重點 vvv ---
+  // 我們告訴 TypeScript，從 Firestore 回來的 doc.data() 內容，
+  // 把它當作 RecordData 來對待。
+  return querySnapshot.docs.map(doc => {
+    const data = doc.data() as RecordData; // 先進行型別斷言
+    return {
+        id: doc.id,
+        ...data
+    };
+  });
+  // --- ^^^ 這裡是本次修改的重點 ^^^ ---
 };
