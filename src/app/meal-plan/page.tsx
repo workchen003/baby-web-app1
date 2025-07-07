@@ -84,6 +84,11 @@ export default function MealPlanPage() {
     const [todaysRecords, setTodaysRecords] = useState<RecordData[]>([]);
     const [isSharing, setIsSharing] = useState(false);
 
+    const familyId = userProfile?.familyIDs?.[0];
+    if (authLoading || !familyId) {
+        return <div className="flex min-h-screen items-center justify-center">正在驗證使用者與家庭資料...</div>;
+    }
+
     const weekInterval = useMemo(() => ({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }), [currentDate]);
     const daysInWeek = useMemo(() => eachDayOfInterval(weekInterval), [weekInterval]);
 
@@ -180,19 +185,16 @@ export default function MealPlanPage() {
     }, [todaysRecords]);
 
     useEffect(() => {
-        if (!userProfile?.familyIDs?.[0] || !babyProfile) return;
-        const familyId = userProfile.familyIDs[0];
+        if (!babyProfile) return;
         const babyId = 'baby_01';
         const start = new Date(selectedDate);
         start.setHours(0,0,0,0);
         const end = new Date(selectedDate);
         end.setHours(23,59,59,999);
         getRecordsForDateRange(familyId, babyId, start, end).then(setTodaysRecords);
-    }, [selectedDate, userProfile, babyProfile]);
+    }, [selectedDate, familyId, babyProfile]);
 
     useEffect(() => {
-        if (authLoading || !userProfile?.familyIDs?.[0]) return;
-        const familyId = userProfile.familyIDs[0];
         const babyId = 'baby_01';
         setIsLoading(true);
         Promise.all([getBabyProfile(babyId), getMeasurementRecords(familyId, babyId), getMealPlan(familyId)])
@@ -217,7 +219,7 @@ export default function MealPlanPage() {
                     setWeeklyPlans(hydratedPlans);
                 }
             }).catch(console.error).finally(() => setIsLoading(false));
-    }, [userProfile, authLoading]);
+    }, [familyId]);
 
     const weightRecordInfo = useMemo(() => {
         if (!latestWeightRecord) return { isValid: false, message: "尚未有任何體重紀錄，請先新增一筆！" };
@@ -267,7 +269,7 @@ export default function MealPlanPage() {
     }, [selectedDate, weeklyPlans]);
 
     const handleSavePlan = async () => {
-        if (!userProfile?.familyIDs?.[0]) return alert("無法獲取家庭資訊！");
+        if (!userProfile) return alert("無法獲取家庭資訊！");
         const plansToSave: MealPlan = {};
         weeklyPlans.forEach((plan, dateKey) => {
             const menuToSave = Object.fromEntries(
@@ -280,7 +282,7 @@ export default function MealPlanPage() {
         });
 
         try { 
-            await saveMealPlan(userProfile.familyIDs[0], plansToSave); 
+            await saveMealPlan(familyId, plansToSave); 
             alert("本週計畫已成功儲存！"); 
         } catch (error) { 
             console.error("儲存計畫失敗:", error); 

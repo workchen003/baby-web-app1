@@ -9,45 +9,35 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, DocumentData, Timestamp } from 'firebase/firestore';
 
 export default function DashboardPage() {
-  const { user, userProfile, loading } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [latestRecords, setLatestRecords] = useState<DocumentData[]>([]);
   const [isRecordsLoading, setRecordsLoading] = useState(true);
 
+  // ▼▼▼【關鍵修改】▼▼▼
+  // 這個判斷現在會同時處理載入狀態和確保 familyIDs 存在，從而解決 TypeScript 錯誤。
+  const familyId = userProfile?.familyIDs?.[0];
+  if (authLoading || !familyId) {
+    return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">正在驗證使用者與家庭資料...</div>;
+  }
+  // ▲▲▲【關鍵修改】▲▲▲
+
   useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      router.replace('/');
-      return;
-    }
+    // 由於上面的判斷，現在可以確信 familyId 存在。
+    const q = query(collection(db, "records"), where("familyId", "==", familyId), orderBy("timestamp", "desc"), limit(10));
     
-    let unsubscribe: () => void = () => {};
-    let isMounted = true;
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const records = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLatestRecords(records);
+      setRecordsLoading(false);
+    }, (error) => {
+      console.error("Dashboard snapshot error:", error);
+      setRecordsLoading(false);
+    });
 
-    if (userProfile?.familyIDs?.[0]) {
-      const currentFamilyId = userProfile.familyIDs[0];
-      const q = query(collection(db, "records"), where("familyId", "==", currentFamilyId), orderBy("timestamp", "desc"), limit(10));
-      
-      unsubscribe = onSnapshot(q, (querySnapshot) => {
-        if (isMounted) {
-          const records = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setLatestRecords(records);
-          setRecordsLoading(false);
-        }
-      }, (error) => {
-        console.error("Dashboard snapshot error:", error);
-        if (isMounted) setRecordsLoading(false);
-      });
-    } else if (!loading) {
-        router.replace('/onboarding/create-family');
-    }
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [user, userProfile, loading, router]);
+    return () => unsubscribe();
+  }, [familyId]); // 依賴項現在是 familyId，更精確。
 
   const getRecordTitle = (record: DocumentData) => {
     switch(record.type) {
@@ -66,10 +56,6 @@ export default function DashboardPage() {
         }
       default: return '紀錄';
     }
-  }
-
-  if (loading || !userProfile) {
-    return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">載入中...</div>;
   }
 
   return (

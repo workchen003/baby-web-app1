@@ -1,5 +1,4 @@
 // src/app/photowall/page.tsx
-
 'use client'; 
 
 import Link from 'next/link';
@@ -14,10 +13,6 @@ import { deleteSnapshotRecord } from '@/lib/functions';
 import { generatePhotoWallPdf } from '@/lib/pdfGenerator';
 import { getBabyProfile } from '@/lib/babies';
 
-/**
- * 照片卡片元件 (最終修正版)
- * 直接使用原始圖片 URL，交由 Next.js 優化
- */
 function PhotoCard({ record, onClick, onDelete, isOwner, priority = false }: { 
   record: DocumentData, 
   onClick: (imageUrl: string) => void,
@@ -35,16 +30,12 @@ function PhotoCard({ record, onClick, onDelete, isOwner, priority = false }: {
     >
       <div className="relative w-full aspect-[4/5] bg-gray-100">
         <Image
-          // 【最終修正】直接使用從資料庫拿到的原始圖片 URL
-          // 不再猜測或拼湊縮圖 URL，從根本上避免 404 錯誤。
-          // Next.js 的 Image 元件會自動根據 sizes 屬性優化圖片大小。
           src={imageSrc}
           alt={record.notes || '寶寶的照片'}
           fill
           sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
           className="object-cover"
           priority={priority}
-          // onError 依然作為最後的防線，在原始圖片也失效時顯示預設圖
           onError={() => setImageSrc('/placeholder.png')}
         />
       </div>
@@ -72,9 +63,6 @@ function PhotoCard({ record, onClick, onDelete, isOwner, priority = false }: {
   );
 }
 
-/**
- * 照片牆主頁面元件
- */
 export default function PhotoWallPage() {
     const { user, userProfile, loading: authLoading } = useAuth();
     const [snapshots, setSnapshots] = useState<DocumentData[]>([]);
@@ -91,6 +79,11 @@ export default function PhotoWallPage() {
     const monthInputRef = useRef<HTMLInputElement>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
 
+    const familyId = userProfile?.familyIDs?.[0];
+    if (authLoading || !familyId) {
+        return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">正在驗證使用者與家庭資料...</div>;
+    }
+    
     const handleExportPDF = async () => {
         if (!startDate || !endDate) {
             alert('請選擇要匯出的開始與結束日期。');
@@ -140,11 +133,11 @@ export default function PhotoWallPage() {
     };
 
     const fetchSnapshots = useCallback(async (reset = false) => {
-        if (!userProfile?.familyIDs?.[0]) return;
-        if(reset) setIsLoading(true);
+        if (reset) setIsLoading(true);
         else if (!hasMore || isLoadingMore) return;
+        
         setIsLoadingMore(true);
-        const familyId = userProfile.familyIDs[0];
+        
         const lastDoc = reset ? undefined : lastVisible;
         try {
             const result = await getSnapshots(familyId, { lastDoc, filter: filters });
@@ -162,7 +155,7 @@ export default function PhotoWallPage() {
             setIsLoading(false);
             setIsLoadingMore(false);
         }
-    }, [userProfile, filters, lastVisible, hasMore, isLoadingMore]);
+    }, [familyId, filters, lastVisible, hasMore, isLoadingMore]);
 
     const handleClearFilters = () => {
         setFilters({});
@@ -171,11 +164,13 @@ export default function PhotoWallPage() {
     };
 
     useEffect(() => {
-        if (!authLoading && userProfile) fetchSnapshots(true);
-    }, [userProfile, authLoading, filters, fetchSnapshots]);
+        fetchSnapshots(true);
+    }, [filters, fetchSnapshots]);
 
     useEffect(() => {
-        if (inView && !isLoading && !isLoadingMore) fetchSnapshots(false);
+        if (inView && !isLoading && !isLoadingMore) {
+            fetchSnapshots(false);
+        }
     }, [inView, isLoading, isLoadingMore, fetchSnapshots]);
 
     return (
