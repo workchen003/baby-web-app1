@@ -1,28 +1,25 @@
 // src/data/mealPlanData.ts
 
-// --- vvv 新增：定義更詳細的資料型別 vvv ---
+// --- vvv 確保所有 interface 都有匯出 vvv ---
 export interface Ingredient {
   name: string;
-  // 未來可擴充 quantity, unit 等
 }
 
 export interface Macronutrients {
-  carbs: number; // 碳水化合物 (g)
-  protein: number; // 蛋白質 (g)
-  fat: number; // 脂肪 (g)
+  carbs: number;
+  protein: number;
+  fat: number;
 }
 
 export interface Recipe {
   name: string;
   category: 'staple' | 'protein' | 'vegetable' | 'fruit';
   caloriesPerGram: number;
-  allergens?: ('egg' | 'fish' | 'nuts' | 'dairy' | 'gluten' | 'soy')[]; // 新增 soy
-  // 新增的詳細資料
+  allergens?: ('egg' | 'fish' | 'nuts' | 'dairy' | 'gluten' | 'soy')[];
   ingredients: Ingredient[];
-  nutrientsPer100g: Macronutrients; // 每 100g 的三大營養素估算
+  nutrientsPer100g: Macronutrients;
 }
-// --- ^^^ 新增：定義更詳細的資料型別 ^^^ ---
-
+// --- ^^^ 確保所有 interface 都有匯出 ^^^ ---
 
 export interface AgeStagePlan {
   stage: string;
@@ -31,7 +28,6 @@ export interface AgeStagePlan {
   caloriesPerKg: number;
   recipes: Recipe[];
 }
-
 
 export const mealPlanData: AgeStagePlan[] = [
   {
