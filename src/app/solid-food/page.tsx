@@ -1,3 +1,4 @@
+// src/app/solid-food/page.tsx
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,6 +8,9 @@ import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, DocumentData } from 'firebase/firestore';
 import AddRecordModal from '@/components/AddRecordModal';
+// --- vvv 新增：從 babies 引入 BabyProfile 型別 vvv ---
+import { getBabyProfile, BabyProfile } from '@/lib/babies';
+// --- ^^^ 新增：從 babies 引入 BabyProfile 型別 ^^^ ---
 
 export default function SolidFoodTimelinePage() {
   const { user, userProfile, loading } = useAuth();
@@ -15,7 +19,11 @@ export default function SolidFoodTimelinePage() {
   const [records, setRecords] = useState<DocumentData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
+  // --- vvv 新增：增加一個狀態來儲存 babyProfile vvv ---
+  const [babyProfileData, setBabyProfileData] = useState<BabyProfile | null>(null);
+  // --- ^^^ 新增：增加一個狀態來儲存 babyProfile ^^^ ---
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DocumentData | null>(null);
@@ -29,14 +37,24 @@ export default function SolidFoodTimelinePage() {
     }
     if (userProfile && userProfile.familyIDs && userProfile.familyIDs.length > 0) {
       const currentFamilyId = userProfile.familyIDs[0];
+      const babyId = 'baby_01'; // 假設 babyId
+
+      // --- vvv 新增：同時獲取寶寶資料 vvv ---
+      getBabyProfile(babyId).then(profile => {
+        if(isMounted) {
+            setBabyProfileData(profile);
+        }
+      });
+      // --- ^^^ 新增：同時獲取寶寶資料 ^^^ ---
+
       const q = query(
-        collection(db, "records"), 
+        collection(db, "records"),
         where("familyId", "==", currentFamilyId),
-        where("type", "==", "solid-food"), // 只查詢副食品紀錄
+        where("type", "==", "solid-food"),
         orderBy("timestamp", "desc")
       );
 
-      const unsubscribe = onSnapshot(q, 
+      const unsubscribe = onSnapshot(q,
         (querySnapshot) => {
           if (isMounted) {
             const fetchedRecords = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -125,7 +143,9 @@ export default function SolidFoodTimelinePage() {
         </main>
       </div>
 
-      {isModalOpen && <AddRecordModal recordType="solid-food" onClose={handleCloseModal} existingRecord={editingRecord} />}
+      {/* --- vvv 修正：傳入 babyProfileData prop vvv --- */}
+      {isModalOpen && <AddRecordModal recordType="solid-food" onClose={handleCloseModal} existingRecord={editingRecord} babyProfile={babyProfileData} />}
+      {/* --- ^^^ 修正：傳入 babyProfileData prop ^^^ --- */}
     </>
   );
 }

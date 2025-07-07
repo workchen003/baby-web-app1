@@ -5,52 +5,39 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBabyProfile, BabyProfile } from '@/lib/babies';
-import { getMeasurementRecords } from '@/lib/records';
-// --- vvv 這裡是本次修改的重點 vvv ---
-import { mealPlanData, AgeStagePlan, Recipe, Ingredient, Macronutrients } from '@/data/mealPlanData'; // 引入所有需要的型別
-// --- ^^^ 這裡是本次修改的重點 ^^^ ---
+import { getMeasurementRecords, RecordData, CreatableRecordType } from '@/lib/records';
+import { mealPlanData, AgeStagePlan, Recipe, Ingredient, Macronutrients } from '@/data/mealPlanData';
 import { startOfWeek, endOfWeek, addDays, subDays, format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import AddRecordModal from '@/components/AddRecordModal';
+// --- vvv 新增：從 firebase/firestore 引入 Timestamp vvv ---
+import { Timestamp } from 'firebase/firestore';
+// --- ^^^ 新增：從 firebase/firestore 引入 Timestamp ^^^ ---
 
 // --- 型別定義 ---
-interface Meal {
-    recipe: Recipe;
-    grams: number;
-}
-interface DailyMenu {
-    breakfast: Meal[];
-    lunch: Meal[];
-    dinner: Meal[];
-    snacks: Meal[];
-}
-interface DailyPlan {
-    feedCount: number;
-    volumePerFeed: number;
-    menu: DailyMenu;
-}
+interface Meal { recipe: Recipe; grams: number; }
+interface DailyMenu { breakfast: Meal[]; lunch: Meal[]; dinner: Meal[]; snacks: Meal[]; }
+interface DailyPlan { feedCount: number; volumePerFeed: number; menu: DailyMenu; }
 
 // --- 子元件 ---
 const ShoppingListModal = ({ plans, onClose }: { plans: Map<string, DailyPlan>, onClose: () => void }) => {
+    // ... ShoppingListModal 內容維持不變 ...
     const shoppingList = useMemo(() => {
         const ingredients = new Set<string>();
         plans.forEach(plan => {
             Object.values(plan.menu).flat().forEach(meal => {
-                // --- vvv 這裡是本次修改的重點 vvv ---
-                meal.recipe.ingredients.forEach((ingredient: Ingredient) => { // 明確指定 ingredient 的型別
+                meal.recipe.ingredients.forEach((ingredient: Ingredient) => {
                     ingredients.add(ingredient.name);
                 });
-                // --- ^^^ 這裡是本次修改的重點 ^^^ ---
             });
         });
         return Array.from(ingredients);
     }, [plans]);
-
     const handleCopy = () => {
         navigator.clipboard.writeText(shoppingList.join('\n'));
         alert('購物清單已複製到剪貼簿！');
     };
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
             <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
@@ -83,15 +70,19 @@ export default function MealPlanPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [weeklyPlans, setWeeklyPlans] = useState<Map<string, DailyPlan>>(new Map());
+    
+    // --- vvv 修正：將 shopping list 的 Modal 狀態移到這裡 vvv ---
+    const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
+    // --- ^^^ 修正：將 shopping list 的 Modal 狀態移到這裡 ^^^ ---
+    const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+    const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData: Partial<RecordData> } | null>(null);
 
     const weekInterval = useMemo(() => {
         const start = startOfWeek(currentDate, { weekStartsOn: 1 });
         const end = endOfWeek(currentDate, { weekStartsOn: 1 });
         return { start, end };
     }, [currentDate]);
-
     const daysInWeek = useMemo(() => eachDayOfInterval(weekInterval), [weekInterval]);
 
     const activeStage = useMemo((): AgeStagePlan | undefined => {
@@ -111,15 +102,12 @@ export default function MealPlanPage() {
     
         if (staples.length > 0) menu.breakfast.push({ recipe: staples[0], grams: 20 });
         if (fruits.length > 0) menu.breakfast.push({ recipe: fruits[0], grams: 10 });
-    
         if (staples.length > 0) menu.lunch.push({ recipe: staples[0], grams: 30 });
         if (proteins.length > 0) menu.lunch.push({ recipe: proteins[0], grams: 20 });
         if (vegetables.length > 0) menu.lunch.push({ recipe: vegetables[0], grams: 20 });
-        
         if (staples.length > 0) menu.dinner.push({ recipe: staples[0], grams: 30 });
         if (proteins.length > 1) menu.dinner.push({ recipe: proteins[1] || proteins[0], grams: 20 });
         if (vegetables.length > 1) menu.dinner.push({ recipe: vegetables[1] || vegetables[0], grams: 20 });
-    
         if (fruits.length > 1) menu.snacks.push({ recipe: fruits[1] || fruits[0], grams: 15 });
     
         return menu;
@@ -141,14 +129,11 @@ export default function MealPlanPage() {
 
     const { actualTotalCalories, nutrientTotals } = useMemo(() => {
         if (!babyProfile || !activeStage) return { actualTotalCalories: 0, nutrientTotals: { carbs: 0, protein: 0, fat: 0 } };
-        
         const breastMilkCaloriesPerMl = 0.67;
         let milkCalories = 0;
-
         if (babyProfile.milkType === 'breast') milkCalories = selectedPlan.feedCount * selectedPlan.volumePerFeed * breastMilkCaloriesPerMl;
         else if (babyProfile.milkType === 'formula' && babyProfile.formulaCalories) milkCalories = selectedPlan.feedCount * selectedPlan.volumePerFeed * (babyProfile.formulaCalories / 100);
         else if (babyProfile.milkType === 'mixed') milkCalories = selectedPlan.feedCount * selectedPlan.volumePerFeed * (babyProfile.formulaCalories ? babyProfile.formulaCalories / 100 : breastMilkCaloriesPerMl);
-
         let solidFoodCalories = 0;
         const nutrients: Macronutrients = { carbs: 0, protein: 0, fat: 0 };
         Object.values(selectedPlan.menu).flat().forEach(meal => {
@@ -157,7 +142,6 @@ export default function MealPlanPage() {
             nutrients.protein += (meal.recipe.nutrientsPer100g.protein / 100) * meal.grams;
             nutrients.fat += (meal.recipe.nutrientsPer100g.fat / 100) * meal.grams;
         });
-
         return {
             actualTotalCalories: Math.round(milkCalories + solidFoodCalories),
             nutrientTotals: nutrients
@@ -175,7 +159,6 @@ export default function MealPlanPage() {
         if (authLoading || !userProfile?.familyIDs?.[0]) return;
         const familyId = userProfile.familyIDs[0];
         const babyId = 'baby_01';
-
         Promise.all([ getBabyProfile(babyId), getMeasurementRecords(familyId, babyId) ])
             .then(([profile, records]) => {
                 if (profile) {
@@ -186,6 +169,13 @@ export default function MealPlanPage() {
             }).catch(console.error).finally(() => setIsLoading(false));
     }, [userProfile, authLoading]);
 
+    const handleRecordClick = (type: CreatableRecordType, initialData: Partial<RecordData>) => {
+        // --- vvv 修正：傳入 Firestore Timestamp 物件 vvv ---
+        setModalConfig({ type, initialData: {...initialData, timestamp: Timestamp.fromDate(selectedDate)} });
+        // --- ^^^ 修正：傳入 Firestore Timestamp 物件 ^^^ ---
+        setIsRecordModalOpen(true);
+    };
+
     const updatePlan = (updates: Partial<DailyPlan>) => {
         const dateKey = format(selectedDate, 'yyyy-MM-dd');
         const newPlans = new Map(weeklyPlans);
@@ -193,13 +183,15 @@ export default function MealPlanPage() {
         newPlans.set(dateKey, { ...currentPlan, ...updates });
         setWeeklyPlans(newPlans);
     };
-
     const handleMealChange = (mealType: keyof DailyMenu, index: number, field: keyof Meal, value: any) => {
         const newMenu = { ...selectedPlan.menu };
-        (newMenu[mealType][index] as any)[field] = value;
+        if (field === 'recipe') {
+            newMenu[mealType][index][field] = value;
+        } else {
+            (newMenu[mealType][index] as any)[field] = value;
+        }
         updatePlan({ menu: newMenu });
     };
-
     const copyYesterdayPlan = () => {
         const yesterdayKey = format(subDays(selectedDate, 1), 'yyyy-MM-dd');
         const yesterdayPlan = weeklyPlans.get(yesterdayKey);
@@ -208,7 +200,6 @@ export default function MealPlanPage() {
             alert('已成功複製昨日設定！');
         } else alert('昨日沒有可複製的餐食計畫。');
     };
-
     const checkAllergen = useCallback((recipe: Recipe): boolean => {
         if (!babyProfile?.knownAllergens || !recipe.allergens) return false;
         return recipe.allergens.some(allergen => babyProfile.knownAllergens?.includes(allergen));
@@ -217,10 +208,21 @@ export default function MealPlanPage() {
     if (isLoading) return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
     if (!babyProfile || !latestWeight) return <div className="p-8 text-center"><p>無法讀取寶寶資料或最新體重紀錄。</p><Link href="/baby/edit" className="text-blue-600 hover:underline">前往設定</Link></div>;
 
-    // The rest of the component's JSX remains the same
+    // --- vvv 移除此處的 return，修正重複的 JSX vvv ---
+    // The rest of the component's JSX will be in a single return statement below
+    // --- ^^^ 移除此處的 return，修正重複的 JSX ^^^ ---
+
     return (
         <>
-            {isModalOpen && activeStage && <ShoppingListModal plans={weeklyPlans} onClose={() => setIsModalOpen(false)} />}
+            {isShoppingListModalOpen && activeStage && <ShoppingListModal plans={weeklyPlans} onClose={() => setIsShoppingListModalOpen(false)} />}
+            {isRecordModalOpen && modalConfig && (
+                <AddRecordModal
+                    recordType={modalConfig.type}
+                    initialData={modalConfig.initialData}
+                    onClose={() => setIsRecordModalOpen(false)}
+                    babyProfile={babyProfile} // 傳入 babyProfile
+                />
+            )}
             <div className="p-4 md:p-8">
                 {/* Header and Date Navigation */}
                 <div className="flex justify-between items-center mb-4">
@@ -275,23 +277,25 @@ export default function MealPlanPage() {
                                 </PieChart>
                              </ResponsiveContainer>
                         </div>
-                        <div className="p-6 bg-white rounded-lg shadow-sm border-t-4 border-indigo-400">
+                         <div className="p-6 bg-white rounded-lg shadow-sm border-t-4 border-indigo-400">
                              <h3 className="font-semibold text-gray-500">當日實際攝取量 (來自照護紀錄)</h3>
                              <p className="text-center text-gray-400 py-8 text-sm">此處未來將顯示實際紀錄與計畫的達成率圖表。</p>
                         </div>
                     </div>
-
                     {/* Right Column: Planner */}
                     <div className="lg:col-span-2 p-6 bg-white rounded-lg shadow-sm space-y-6">
                         <div className="flex justify-between items-center">
                             <h2 className="text-xl font-bold">每日計畫：{format(selectedDate, 'M月d日')}</h2>
                             <div className="flex gap-2">
                                 <button onClick={copyYesterdayPlan} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-300">複製昨日</button>
-                                <button onClick={() => setIsModalOpen(true)} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-green-700">採買清單</button>
+                                <button onClick={() => setIsShoppingListModalOpen(true)} className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-green-700">採買清單</button>
                             </div>
                         </div>
                         <div className="p-4 border rounded-md">
-                            <h4 className="font-semibold mb-2">奶類</h4>
+                            <div className="flex justify-between items-center mb-2">
+                               <h4 className="font-semibold">奶類</h4>
+                               <button onClick={() => handleRecordClick('feeding', { amount: selectedPlan.volumePerFeed })} className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded hover:bg-blue-200">紀錄一餐</button>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="feedCount" className="block text-sm font-medium text-gray-700">餵奶次數</label>
@@ -317,6 +321,7 @@ export default function MealPlanPage() {
                                                     </select>
                                                     <input type="number" value={meal.grams} onChange={e => handleMealChange(mealType, index, 'grams', Number(e.target.value))} className="p-2 border rounded w-1/4" />
                                                     <span className="text-sm text-gray-500">克</span>
+                                                    <button onClick={() => handleRecordClick('solid-food', { foodItems: meal.recipe.name, amount: meal.grams })} className="px-2 py-2 bg-blue-100 text-blue-700 text-xs font-bold rounded hover:bg-blue-200">✔️</button>
                                                 </div>
                                             ))}
                                         </div>
