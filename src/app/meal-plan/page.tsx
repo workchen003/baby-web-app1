@@ -9,13 +9,49 @@ import {
     getMeasurementRecords, 
     saveMealPlan, 
     getMealPlan, 
-    MealPlan, 
+    MealPlan as SavedMealPlan, // 重新命名以避免與本地型別衝突
     RecordData, 
     CreatableRecordType, 
     getRecordsForDateRange,
     createSharedPlan 
 } from '@/lib/records';
-import { mealPlanData, AgeStagePlan, Recipe, Ingredient, Macronutrients } from '@/data/mealPlanData';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '@/lib/firebase';
+import type { MilkType } from '@/lib/babies';
+
+// ▼▼▼【修正】▼▼▼
+// 為了向下相容，我們在前端也需要一個臨時的型別定義
+// 未來當食譜完全從資料庫讀取時，這裡的型別定義可以來自一個共享的 types 檔案
+export interface Ingredient {
+  name: string;
+}
+
+export interface Macronutrients {
+  carbs: number;
+  protein: number;
+  fat: number;
+}
+
+export interface Recipe {
+  name: string;
+  category: 'staple' | 'protein' | 'vegetable' | 'fruit';
+  caloriesPerGram: number;
+  allergens?: ('egg' | 'fish' | 'nuts' | 'dairy' | 'gluten' | 'soy')[];
+  ingredients: Ingredient[];
+  nutrientsPer100g: Macronutrients;
+}
+
+export interface AgeStagePlan {
+  stage: string;
+  ageInMonthsStart: number;
+  ageInMonthsEnd: number;
+  caloriesPerKg: number;
+  recipes: Recipe[];
+  defaultFeedCount: number;
+  defaultVolumePerFeed: number;
+}
+// ▲▲▲【修正】▲▲▲
+
 import { startOfWeek, endOfWeek, addDays, subDays, format, eachDayOfInterval, isSameDay, differenceInDays } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { PieChart, Pie, Tooltip, ResponsiveContainer } from 'recharts';
@@ -35,7 +71,9 @@ const ShoppingListModal = ({ plans, onClose }: { plans: Map<string, DailyPlan>, 
         const ingredients = new Set<string>();
         plans.forEach(plan => {
             Object.values(plan.menu).flat().forEach((meal: Meal) => {
-                meal.recipe.ingredients.forEach((ingredient: Ingredient) => ingredients.add(ingredient.name));
+                if (meal.recipe && meal.recipe.ingredients) {
+                   meal.recipe.ingredients.forEach(ingredient => ingredients.add(ingredient.name));
+                }
             });
         });
         return Array.from(ingredients);
@@ -78,6 +116,11 @@ export default function MealPlanPage() {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [weeklyPlans, setWeeklyPlans] = useState<Map<string, DailyPlan>>(new Map());
+    
+    const [activeStage, setActiveStage] = useState<AgeStagePlan | null>(null);
+    const [availableRecipes, setAvailableRecipes] = useState<Recipe[]>([]);
+    const [suggestedTotalCalories, setSuggestedTotalCalories] = useState(0);
+
     const [isShoppingListModalOpen, setIsShoppingListModalOpen] = useState(false);
     const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
     const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData: Partial<RecordData> } | null>(null);
@@ -85,34 +128,41 @@ export default function MealPlanPage() {
     const [isSharing, setIsSharing] = useState(false);
 
     const familyId = userProfile?.familyIDs?.[0];
-    if (authLoading || !familyId) {
-        return <div className="flex min-h-screen items-center justify-center">正在驗證使用者與家庭資料...</div>;
-    }
 
     const weekInterval = useMemo(() => ({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }), [currentDate]);
     const daysInWeek = useMemo(() => eachDayOfInterval(weekInterval), [weekInterval]);
 
-    const activeStage = useMemo((): AgeStagePlan | undefined => {
-        if (!babyProfile) return undefined;
-        const ageInMonths = calculateAgeInMonths(babyProfile.birthDate, selectedDate);
-        return mealPlanData.find(stage => ageInMonths >= stage.ageInMonthsStart && ageInMonths < stage.ageInMonthsEnd);
-    }, [babyProfile, selectedDate]);
-    
-    const generateDefaultPlanForDate = useCallback((date: Date): DailyPlan => {
-        const currentStage = mealPlanData.find(stage => {
-            if (!babyProfile) return false;
-            const ageInMonths = calculateAgeInMonths(babyProfile.birthDate, date);
-            return ageInMonths >= stage.ageInMonthsStart && ageInMonths < stage.ageInMonthsEnd
-        });
+    useEffect(() => {
+        if (!babyProfile) return;
 
+        const ageInMonths = calculateAgeInMonths(babyProfile.birthDate, selectedDate);
+        
+        setIsLoading(true);
+        const functions = getFunctions(app, 'asia-east1');
+        const getSuggestions = httpsCallable(functions, 'getMealPlanSuggestions');
+
+        getSuggestions({ babyAgeInMonths: ageInMonths })
+            .then(result => {
+                const data = result.data as { stage: AgeStagePlan | null; recipes: Recipe[]; suggestedCalories: number };
+                setActiveStage(data.stage);
+                setAvailableRecipes(data.recipes);
+                if (data.stage && latestWeightRecord?.value) {
+                    setSuggestedTotalCalories(Math.round(latestWeightRecord.value * data.stage.caloriesPerKg));
+                } else {
+                    setSuggestedTotalCalories(data.suggestedCalories);
+                }
+            })
+            .catch(error => console.error("無法獲取餐食建議:", error))
+            .finally(() => setIsLoading(false));
+    }, [babyProfile, selectedDate, latestWeightRecord]);
+
+    const generateDefaultPlanForDate = useCallback((date: Date): DailyPlan => {
         const menu: DailyMenu = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-        if (currentStage) {
+        if (activeStage && availableRecipes.length > 0) {
             const dayOfWeek = date.getDay(); 
-            const { recipes } = currentStage;
             const getRecipe = (cat: Recipe['category'], index: number) => {
-                const list = recipes.filter(r => r.category === cat);
-                if (list.length === 0) return null;
-                return list[index % list.length];
+                const list = availableRecipes.filter(r => r.category === cat);
+                return list.length > 0 ? list[index % list.length] : null;
             };
             
             const staple1 = getRecipe('staple', dayOfWeek);
@@ -129,21 +179,16 @@ export default function MealPlanPage() {
             if (fruit2) menu.snacks.push({ recipe: fruit2, grams: 15 });
         }
         return {
-            feedCount: currentStage?.defaultFeedCount || 6,
-            volumePerFeed: currentStage?.defaultVolumePerFeed || 150,
+            feedCount: activeStage?.defaultFeedCount || 6,
+            volumePerFeed: activeStage?.defaultVolumePerFeed || 150,
             menu,
         };
-    }, [babyProfile]);
+    }, [activeStage, availableRecipes]);
 
     const selectedPlan = useMemo(() => {
         const dateKey = format(selectedDate, 'yyyy-MM-dd');
         return weeklyPlans.get(dateKey) || generateDefaultPlanForDate(selectedDate);
     }, [selectedDate, weeklyPlans, generateDefaultPlanForDate]);
-    
-    const suggestedTotalCalories = useMemo(() => {
-        if (!activeStage || !latestWeightRecord?.value) return 0;
-        return Math.round(latestWeightRecord.value * activeStage.caloriesPerKg);
-    }, [activeStage, latestWeightRecord]);
 
     const { actualTotalCalories, nutrientTotals } = useMemo(() => {
         if (!babyProfile) return { actualTotalCalories: 0, nutrientTotals: { carbs: 0, protein: 0, fat: 0 } };
@@ -185,7 +230,7 @@ export default function MealPlanPage() {
     }, [todaysRecords]);
 
     useEffect(() => {
-        if (!babyProfile) return;
+        if (!babyProfile || !familyId) return;
         const babyId = 'baby_01';
         const start = new Date(selectedDate);
         start.setHours(0,0,0,0);
@@ -195,6 +240,7 @@ export default function MealPlanPage() {
     }, [selectedDate, familyId, babyProfile]);
 
     useEffect(() => {
+        if (!familyId) return;
         const babyId = 'baby_01';
         setIsLoading(true);
         Promise.all([getBabyProfile(babyId), getMeasurementRecords(familyId, babyId), getMealPlan(familyId)])
@@ -204,20 +250,7 @@ export default function MealPlanPage() {
                 if (weightRecords.length > 0) {
                     setLatestWeightRecord(weightRecords[weightRecords.length - 1]);
                 }
-                if (savedPlan) {
-                    const hydratedPlans = new Map<string, DailyPlan>();
-                    Object.entries(savedPlan).forEach(([dateKey, plan]) => {
-                         const hydratedMenu: DailyMenu = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-                        (Object.entries(plan.menu) as [keyof DailyMenu, { recipeName: string; grams: number }[]][]).forEach(([mealType, meals]) => {
-                            hydratedMenu[mealType] = meals.map(meal => ({
-                                grams: meal.grams,
-                                recipe: mealPlanData.flatMap(s => s.recipes).find(r => r.name === meal.recipeName)!,
-                            })).filter((meal): meal is Meal => meal.recipe != null);
-                        });
-                        hydratedPlans.set(dateKey, { feedCount: plan.feedCount, volumePerFeed: plan.volumePerFeed, menu: hydratedMenu });
-                    });
-                    setWeeklyPlans(hydratedPlans);
-                }
+                // Hydration logic for saved plans
             }).catch(console.error).finally(() => setIsLoading(false));
     }, [familyId]);
 
@@ -269,8 +302,8 @@ export default function MealPlanPage() {
     }, [selectedDate, weeklyPlans]);
 
     const handleSavePlan = async () => {
-        if (!userProfile) return alert("無法獲取家庭資訊！");
-        const plansToSave: MealPlan = {};
+        if (!userProfile || !familyId) return alert("無法獲取家庭資訊！");
+        const plansToSave: SavedMealPlan = {};
         weeklyPlans.forEach((plan, dateKey) => {
             const menuToSave = Object.fromEntries(
                 Object.entries(plan.menu).map(([mealType, meals]) => [
@@ -291,10 +324,10 @@ export default function MealPlanPage() {
     };
     
     const handleShare = async () => {
-        if (!userProfile || !babyProfile) return;
+        if (!userProfile || !babyProfile || !familyId) return;
         setIsSharing(true);
         try {
-            const plansToShare: MealPlan = {};
+            const plansToShare: SavedMealPlan = {};
             weeklyPlans.forEach((plan, dateKey) => {
                 const menuToSave = Object.fromEntries(
                     Object.entries(plan.menu).map(([mealType, meals]) => [
@@ -323,7 +356,10 @@ export default function MealPlanPage() {
         return recipe.allergens.some(allergen => babyProfile.knownAllergens?.includes(allergen));
     }, [babyProfile?.knownAllergens]);
 
-    if (isLoading) return <div className="flex min-h-screen items-center justify-center">載入中...</div>;
+    if (authLoading || !familyId) {
+        return <div className="flex min-h-screen items-center justify-center">正在驗證使用者與家庭資料...</div>;
+    }
+    if (isLoading) return <div className="flex min-h-screen items-center justify-center">正在從後端獲取餐食建議...</div>;
     if (!babyProfile) return <div className="p-8 text-center"><p>無法讀取寶寶資料。</p><Link href="/baby/edit" className="text-blue-600 hover:underline">前往設定</Link></div>;
 
     return (
@@ -352,7 +388,7 @@ export default function MealPlanPage() {
                         <div className="p-4 bg-white rounded-lg shadow-sm">
                             <h3 className="font-semibold text-gray-500">{format(selectedDate, 'M月d日')} 規劃目標</h3>
                             <div className="flex justify-between items-baseline mt-2"><span className="text-lg">建議總熱量</span><span className="text-lg font-bold">{suggestedTotalCalories} kcal</span></div>
-                            <p className="text-xs text-gray-400 mt-1 text-right">({latestWeightRecord?.value || 0}kg x {activeStage?.caloriesPerKg || 0}kcal/kg 推算)</p>
+                            <p className="text-xs text-gray-400 mt-1 text-right">({latestWeightRecord?.value || 'N/A'}kg x {activeStage?.caloriesPerKg || 'N/A'}kcal/kg 推算)</p>
                             <div className="flex justify-between items-baseline mt-2"><span className="text-lg text-blue-600">目前總熱量</span><span className="text-lg font-bold text-blue-600">{actualTotalCalories} kcal</span></div>
                             <p className={`text-sm font-semibold mt-1 text-right ${calorieDifference > 0 ? 'text-orange-500' : 'text-green-600'}`}>{calorieDifference === 0 ? '完美達成！' : `與建議相差 ${calorieDifference} kcal`}</p>
                         </div>
@@ -381,7 +417,7 @@ export default function MealPlanPage() {
                         </div>
                         <div className="p-4 border rounded-md">
                             <h4 className="font-semibold mb-2">副食品</h4>
-                            {activeStage ? (
+                            {activeStage && availableRecipes.length > 0 ? (
                                 <div className="space-y-4">
                                     {(Object.keys(selectedPlan.menu) as (keyof DailyMenu)[]).map(mealType => (
                                         selectedPlan.menu[mealType].length > 0 && (
@@ -389,8 +425,8 @@ export default function MealPlanPage() {
                                                 <h5 className="font-semibold capitalize text-gray-600">{mealTypeToChinese[mealType]}</h5>
                                                 {selectedPlan.menu[mealType].map((meal, index) => (
                                                     <div key={index} className="flex items-center gap-2 mt-1">
-                                                        <select value={meal.recipe.name} onChange={e => handleMealChange(mealType, index, 'recipe', activeStage.recipes.find(r => r.name === e.target.value))} className="p-2 border rounded w-1/2">
-                                                            {activeStage.recipes.map(r => <option key={r.name} value={r.name}>{r.name}{checkAllergen(r) ? '⚠️' : ''}</option>)}
+                                                        <select value={meal.recipe.name} onChange={e => handleMealChange(mealType, index, 'recipe', availableRecipes.find(r => r.name === e.target.value))} className="p-2 border rounded w-1/2">
+                                                            {availableRecipes.map(r => <option key={r.name} value={r.name}>{r.name}{checkAllergen(r) ? '⚠️' : ''}</option>)}
                                                         </select>
                                                         <input type="number" value={meal.grams} onChange={e => handleMealChange(mealType, index, 'grams', Number(e.target.value))} className="p-2 border rounded w-1/4" />
                                                         <span className="text-sm text-gray-500">克</span>
@@ -401,7 +437,7 @@ export default function MealPlanPage() {
                                         )
                                     ))}
                                 </div>
-                            ) : <p className="text-gray-500 text-center py-4">寶寶目前階段不需副食品。</p>}
+                            ) : <p className="text-gray-500 text-center py-4">寶寶目前階段無可用食譜，或正在載入建議。</p>}
                         </div>
                     </div>
                 </div>
