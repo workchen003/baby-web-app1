@@ -32,6 +32,9 @@ importers:
       firebase:
         specifier: ^11.9.1
         version: 11.9.1
+      firebase-functions:
+        specifier: ^6.3.2
+        version: 6.3.2(firebase-admin@13.4.0)
       html2canvas:
         specifier: ^1.4.1
         version: 1.4.1
