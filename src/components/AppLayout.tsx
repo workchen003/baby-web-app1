@@ -7,10 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { signOutUser } from '@/lib/auth';
 import BabixLogo from '@/components/icons/BabixLogo';
-// ▼▼▼【修正】▼▼▼
-// 1. 從 next/navigation 引入 useRouter
 import { usePathname, useRouter } from 'next/navigation';
-// ▲▲▲【修正】▲▲▲
 import { useEffect, useState, useMemo, useRef } from 'react';
 import FloatingActionButton from './FloatingActionButton';
 import AddRecordModal from './AddRecordModal';
@@ -65,7 +62,7 @@ const AppHeader = () => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [userProfile]);
 
-    const babyAge = useMemo(() => babyProfile ? calculateAge(babyProfile.birthDate) : null, [babyProfile]);
+    const babyAge = useMemo(() => babyProfile ? calculateAge(new Date(babyProfile.birthDate)) : null, [babyProfile]);
 
     return (
         <header className="sticky top-0 z-30 w-full bg-white/90 backdrop-blur-sm shadow-sm flex-shrink-0">
@@ -143,29 +140,44 @@ const AppFooter = () => (
 
 // 主佈局元件
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
+    const { user, userProfile, loading } = useAuth();
     const pathname = usePathname();
-    // ▼▼▼【修正】▼▼▼
-    // 2. 在元件頂層宣告 useRouter
     const router = useRouter();
-    // ▲▲▲【修正】▲▲▲
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData?: Partial<RecordData> } | null>(null);
     const [babyProfileForModal, setBabyProfileForModal] = useState<BabyProfile | null>(null);
+
+    // ▼▼▼【核心修正】▼▼▼
+    // 定義一個不需要被引導的「白名單」路徑
+    const onboardingWhitelist = ['/', '/onboarding/create-family', '/join'];
 
     useEffect(() => {
         if (user) {
             getBabyProfile('baby_01').then(setBabyProfileForModal);
         }
-    }, [user]);
+
+        if (loading) return;
+
+        if (user && userProfile) {
+            // 檢查使用者是否沒有家庭
+            if (!userProfile.familyIDs || userProfile.familyIDs.length === 0) {
+                // 檢查目前的路徑是否在白名單內，如果不在，才進行導引
+                if (!onboardingWhitelist.includes(pathname)) {
+                    router.push('/onboarding/create-family');
+                }
+            }
+        }
+    }, [user, userProfile, loading, pathname, router, onboardingWhitelist]);
+    // ▲▲▲【核心修正】▲▲▲
 
     const handleAddRecord = (type: CreatableRecordType) => {
         setModalConfig({ type });
         setIsModalOpen(true);
     };
     
-    const noLayoutRoutes = ['/'];
-    if (noLayoutRoutes.includes(pathname)) {
+    // 如果目前路徑是在 onboarding 白名單中，則不使用 AppLayout 的主要佈局（頁首、頁腳等）
+    if (onboardingWhitelist.includes(pathname)) {
         return <>{children}</>;
     }
     
