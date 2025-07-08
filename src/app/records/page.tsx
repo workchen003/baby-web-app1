@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // 【核心修改】引入 Link 元件
 import { addRecord, CreatableRecordType } from '@/lib/records';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, DocumentData, Timestamp } from 'firebase/firestore';
@@ -115,7 +116,14 @@ export default function CareRecordsPage() {
     
     return (
         <div className="p-4 md:p-8 space-y-8">
-            <h1 className="text-3xl font-bold">照護紀錄</h1>
+            <div className="flex justify-between items-center">
+              <h1 className="text-3xl font-bold">照護紀錄</h1>
+              {/* 【核心修改】新增前往副食品時間軸的連結 */}
+              <Link href="/solid-food" className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline">
+                查看完整副食品時間軸 &rarr;
+              </Link>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
                     <QuickAddCard icon={<Milk className="h-6 w-6 text-blue-500"/>} title="餵奶紀錄">

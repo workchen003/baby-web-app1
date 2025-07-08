@@ -4,16 +4,35 @@ import { db } from './firebase';
 import {
   collection,
   doc,
+  getDoc,
   arrayUnion,
   writeBatch,
+  DocumentData,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 
+// 定義家庭成員的詳細資料結構
+export interface FamilyMember {
+    uid: string;
+    role: string;
+    displayName?: string; // 從 users 集合中取得
+    photoURL?: string;    // 從 users 集合中取得
+}
+
+// 定義完整家庭資料的結構
+export interface FamilyDetails extends DocumentData {
+    id: string;
+    familyName: string;
+    creatorID: string;
+    members: FamilyMember[];
+    memberUIDs: string[];
+}
+
 /**
  * 建立家庭
- * @param user - 當前登入的使用者物件
- * @param familyName - 新家庭的名稱
- * @param role - 使用者在家庭中的角色 (例如：爸爸、媽媽)
  */
 export const createFamily = async (
   user: User,
@@ -21,29 +40,87 @@ export const createFamily = async (
   role: string
 ) => {
   const batch = writeBatch(db);
-
-  // 產生一個新的 family 文件參照
   const familyRef = doc(collection(db, 'families'));
   
-  // 在建立家庭文件時，同時儲存一個 memberUIDs 陣列
-  // 這將大大簡化未來安全規則的撰寫
   batch.set(familyRef, {
     familyName: familyName,
     creatorID: user.uid,
-    // 【核心修改】儲存包含詳細資訊的成員物件陣列
     members: [{ uid: user.uid, role: role }],
-    // 同時也儲存一個只包含 UID 的陣列，專門給安全規則使用
     memberUIDs: [user.uid], 
-    babyIDs: [], // 未來可在此存放家庭內所有寶寶的 ID
-    createdAt: new Date(), // 直接使用客戶端時間
+    babyIDs: [],
+    createdAt: new Date(),
   });
 
-  // 更新當前使用者的 user 文件，將新的 family ID 加入
   const userRef = doc(db, 'users', user.uid);
   batch.update(userRef, {
     familyIDs: arrayUnion(familyRef.id),
   });
   
-  // 一次性提交所有操作
   await batch.commit();
+};
+
+/**
+ * 【網站管理員專用】獲取所有家庭的列表
+ */
+export const getAllFamilies = async (): Promise<FamilyDetails[]> => {
+    const familiesSnapshot = await getDocs(collection(db, "families"));
+    return familiesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FamilyDetails));
+}
+
+/**
+ * 【核心修改】獲取指定家庭的詳細資料，包含成員的公開資訊
+ * @param familyId 家庭 ID
+ * @returns 家庭詳細資料或 null
+ */
+export const getFamilyDetails = async (familyId: string): Promise<FamilyDetails | null> => {
+    if (!familyId) return null;
+
+    const familyRef = doc(db, 'families', familyId);
+    const familySnap = await getDoc(familyRef);
+
+    if (!familySnap.exists()) {
+        console.warn(`Family with ID ${familyId} not found.`);
+        return null;
+    }
+
+    const familyData = familySnap.data();
+    const memberUIDs = familyData.memberUIDs || [];
+
+    if (memberUIDs.length === 0) {
+        // ▼▼▼【修正一】▼▼▼
+        // 明確列出所有屬性，確保符合 FamilyDetails 型別
+        return { 
+            id: familySnap.id, 
+            familyName: familyData.familyName,
+            creatorID: familyData.creatorID,
+            memberUIDs: familyData.memberUIDs,
+            members: [], // 確保 members 是一個空陣列
+        };
+    }
+    
+    const usersQuery = query(collection(db, 'users'), where('uid', 'in', memberUIDs));
+    const usersSnapshot = await getDocs(usersQuery);
+    const usersDataMap = new Map<string, DocumentData>();
+    usersSnapshot.forEach(userDoc => {
+        usersDataMap.set(userDoc.id, userDoc.data());
+    });
+
+    const hydratedMembers: FamilyMember[] = familyData.members.map((member: { uid: string; role: string }) => {
+        const userData = usersDataMap.get(member.uid);
+        return {
+            ...member,
+            displayName: userData?.displayName || '未知成員',
+            photoURL: userData?.photoURL || '',
+        };
+    });
+
+    // ▼▼▼【修正二】▼▼▼
+    // 同樣，明確列出所有屬性，讓 TypeScript 安心
+    return {
+        id: familySnap.id,
+        familyName: familyData.familyName,
+        creatorID: familyData.creatorID,
+        memberUIDs: familyData.memberUIDs,
+        members: hydratedMembers,
+    };
 };
