@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, onSnapshot, DocumentData, Timestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, DocumentData, Timestamp, deleteDoc, doc, QueryConstraint } from 'firebase/firestore';
 import { Milk, Baby, Soup, Ruler, Sun, Moon, Droplets, Syringe } from 'lucide-react';
 
 type FilterType = 'all' | 'feeding' | 'diaper' | 'solid-food' | 'measurement' | 'other';
@@ -45,19 +45,24 @@ export default function TimelinePage() {
     }
 
     useEffect(() => {
-        const constraints = [
+        // 【核心修改】查詢邏輯大幅簡化！
+        const constraints: QueryConstraint[] = [
             where("familyId", "==", familyId),
             orderBy("timestamp", "desc")
         ];
 
+        // 根據 filter 動態增加查詢條件
         if (filter !== 'all') {
             if (filter === 'other') {
+                // 查詢不屬於主要分類的其他類型
                 constraints.push(where("type", "not-in", ['feeding', 'diaper', 'solid-food', 'measurement']));
             } else {
+                // 查詢特定類型
                 constraints.push(where("type", "==", filter));
             }
         }
         
+        // 組合出最終的查詢
         const q = query(collection(db, "records"), ...constraints);
         
         const unsubscribe = onSnapshot(q, (snapshot) => {

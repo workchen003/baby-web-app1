@@ -156,21 +156,39 @@ export const getRecordsForDateRange = async (familyId: string, babyId: string, s
 };
 
 /**
- * 新增一筆照護紀錄
+ * 新增一筆照護紀錄 (採用扁平化結構且型別安全)
  * @param recordData - 紀錄內容
  * @param userProfile - 使用者個人資料
  */
 export const addRecord = async (recordData: Partial<RecordData>, userProfile: UserProfile | null) => {
   if (!recordData.familyId || !recordData.creatorId) throw new Error('Family ID and Creator ID are required.');
   if (!userProfile) throw new Error('User profile is not available.');
+  
   try {
-    const dataToSave = { ...recordData, babyId: 'baby_01', creatorName: userProfile.displayName, timestamp: recordData.timestamp || serverTimestamp() };
-    if (recordData.type === 'snapshot' && dataToSave.timestamp instanceof Timestamp) {
-        const date = dataToSave.timestamp.toDate();
+    // 如果外部沒有傳入 timestamp，我們就在客戶端生成一個標準的 Timestamp 物件。
+    // 這樣可以確保 finalTimestamp 的型別永遠是 Timestamp，解決了型別錯誤。
+    const finalTimestamp = recordData.timestamp || Timestamp.now();
+
+    const dataToSave: Omit<RecordData, 'id'> = {
+        ...recordData,
+        babyId: 'baby_01', // 目前先寫死，未來可擴充
+        creatorName: userProfile.displayName,
+        timestamp: finalTimestamp, // 使用這個確保為 Timestamp 型別的變數
+        familyId: recordData.familyId,
+        creatorId: recordData.creatorId,
+        type: recordData.type as CreatableRecordType,
+    };
+    
+    // 這段邏輯現在可以安全地運作，因為 finalTimestamp 一定是 Timestamp 物件。
+    if (recordData.type === 'snapshot') {
+        const date = finalTimestamp.toDate();
         dataToSave.year = date.getFullYear();
-        dataToSave.month = date.getMonth() + 1;
+        dataToSave.month = date.getMonth() + 1; // 月份從 0 開始，所以要加 1
     }
+
+    // 直接在頂層的 "records" 集合中新增文件
     await addDoc(collection(db, 'records'), dataToSave);
+
   } catch (e) {
     console.error('Error adding document: ', e);
     throw new Error('Failed to add record.');
