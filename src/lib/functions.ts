@@ -35,12 +35,13 @@ export const joinFamilyWithCode = async (inviteCode: string) => {
     return result.data as { success: boolean; message: string; };
   } catch (error) {
     console.error('Error accepting invite:', error);
+    // 將後端傳來的具體錯誤訊息拋出，方便前端顯示
     throw error;
   }
 };
 
 /**
- * [新增] 前端呼叫後端，刪除照片與紀錄
+ * 前端呼叫後端，刪除照片與紀錄
  * @param recordId Firestore 文件的 ID
  * @param imageUrl Storage 圖片的 URL
  * @returns 成功或失敗的結果
@@ -52,7 +53,41 @@ export const deleteSnapshotRecord = async (recordId: string, imageUrl: string) =
     return result.data as { success: boolean; message: string; };
   } catch (error) {
     console.error('刪除照片時發生錯誤:', error);
-    // 將後端傳來的具體錯誤訊息拋出，方便前端顯示
+    throw error;
+  }
+};
+
+
+// ▼▼▼【第五步核心：新的前端呼叫函式】▼▼▼
+
+/**
+ * 【網站管理員專用】從前端呼叫後端，刪除指定使用者
+ * @param userIdToDelete 要刪除的使用者 ID
+ * @returns 成功或失敗的結果
+ */
+export const callDeleteUserAccount = async (userIdToDelete: string) => {
+  try {
+    const deleteUserFunction = httpsCallable(functions, 'deleteUserAccount');
+    const result = await deleteUserFunction({ userIdToDelete });
+    return result.data as { success: boolean; message: string; };
+  } catch (error) {
+    console.error('刪除使用者時發生錯誤:', error);
+    throw error;
+  }
+};
+
+/**
+ * 【網站管理員專用】從前端呼叫後端，刪除指定家庭
+ * @param familyId 要刪除的家庭 ID
+ * @returns 成功或失敗的結果
+ */
+export const callDeleteFamily = async (familyId: string) => {
+  try {
+    const deleteFamilyFunction = httpsCallable(functions, 'deleteFamily');
+    const result = await deleteFamilyFunction({ familyId });
+    return result.data as { success: boolean; message: string; };
+  } catch (error) {
+    console.error('刪除家庭時發生錯誤:', error);
     throw error;
   }
 };

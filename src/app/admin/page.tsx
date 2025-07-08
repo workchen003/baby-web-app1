@@ -12,11 +12,17 @@ export default function AdminDashboardPage() {
         <nav>
           <ul className="space-y-4">
             <li>
-              <Link href="/admin/articles" className="text-blue-600 hover:underline">
+              <Link href="/admin/articles" className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                 - 文章管理
               </Link>
             </li>
-            {/* 未來可以新增更多後台功能連結 */}
+            {/* 【核心修改】新增管理頁面連結 */}
+            <li>
+              <Link href="/admin/management" className="block p-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                - 
+                <span className="font-bold text-red-700">【高風險】使用者與家庭管理</span>
+              </Link>
+            </li>
           </ul>
         </nav>
         <div className="mt-8 border-t pt-4">
