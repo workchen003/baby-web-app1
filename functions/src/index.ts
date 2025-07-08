@@ -1,11 +1,16 @@
 // functions/src/index.ts
 
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
+// --- Imports ---
+// 導入 v2 onCall 可呼叫函式
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+// 明確從 v1 導入背景觸發函式所需模組和型別
+import { auth, firestore, EventContext, logger } from "firebase-functions/v1";
+// 導入 v1/v2 共用的 Change 型別
+import { Change } from "firebase-functions";
+// 導入 Firebase Admin SDK
+import * as admin from "firebase-admin";
 
-// 為 mealPlanData.ts 定義型別，以確保 TypeScript 編譯正確
+// 為 mealPlanData.ts 定義型別
 interface Macronutrients { carbs: number; protein: number; fat: number; }
 interface Ingredient { name: string; }
 export interface Recipe {
@@ -25,33 +30,32 @@ export interface AgeStagePlan {
   defaultFeedCount: number;
   defaultVolumePerFeed: number;
 }
-// 引入已複製到 functions/src/ 目錄下的食譜資料
+// 引入食譜資料
 import { mealPlanData } from "./mealPlanData";
 
 admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage();
 
-// --- 現有 Cloud Functions ---
+// --- Cloud Functions ---
 
-export const createProfileOnSignUp = functions
-  .region("asia-east1")
-  .auth.user()
-  .onCreate((user) => {
-    const { uid, email, displayName, photoURL } = user;
-    const userRef = db.collection("users").doc(uid);
-    console.log(`New user signed up: ${uid}. Creating profile.`);
-    return userRef.set({
-      uid: uid,
-      email: email,
-      displayName: displayName,
-      photoURL: photoURL,
-      familyIDs: [],
-      role: "user",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastLogin: admin.firestore.FieldValue.serverTimestamp(),
-    });
+export const createProfileOnSignUp = auth.user().onCreate((user) => {
+  const { uid, email, displayName, photoURL } = user;
+
+  const userRef = db.collection("users").doc(uid);
+  logger.log(`New user signed up: ${uid}. Creating profile.`);
+
+  return userRef.set({
+    uid,
+    email,
+    displayName,
+    photoURL,
+    familyIDs: [],
+    role: "user",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastLogin: admin.firestore.FieldValue.serverTimestamp(),
   });
+});
 
 export const createInviteCode = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "您必須登入才能執行此操作。");
@@ -66,9 +70,9 @@ export const createInviteCode = onCall(async (request) => {
   const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
   const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
   await db.collection("invites").doc(inviteCode).set({
-    familyId: familyId,
+    familyId,
     creatorId: uid,
-    expiresAt: expiresAt,
+    expiresAt,
   });
   return { code: inviteCode };
 });
@@ -117,16 +121,22 @@ export const deleteSnapshot = onCall(async (request) => {
     await recordRef.delete();
     return { success: true, message: "照片已成功刪除。" };
   } catch (error) {
-    functions.logger.error("刪除照片失敗:", error);
+    logger.error("刪除照片失敗:", error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "刪除過程中發生未知錯誤。");
   }
 });
 
-export const calculateAndStoreBMI = onDocumentWritten("records/{recordId}", async (event) => {
-    if (!event.data?.after.exists) return null;
-    const newData = event.data.after.data();
-    if (!newData || newData.type !== "measurement" || !["weight", "height"].includes(newData.measurementType)) return null;
+export const calculateAndStoreBMI = firestore
+  .document("records/{recordId}")
+  .onWrite(async (change: Change<firestore.DocumentSnapshot>, context: EventContext) => {
+    if (!change.after.exists) {
+      return null;
+    }
+    const newData = change.after.data();
+    if (!newData || newData.type !== "measurement" || !["weight", "height"].includes(newData.measurementType)) {
+      return null;
+    }
 
     const { babyId, familyId, timestamp, creatorId, creatorName } = newData;
     const date = timestamp.toDate();
@@ -142,26 +152,28 @@ export const calculateAndStoreBMI = onDocumentWritten("records/{recordId}", asyn
     let weightTimestamp: admin.firestore.Timestamp | null = null;
 
     querySnapshot.forEach((doc) => {
-        const record = doc.data();
-        if (record.measurementType === "weight") {
-            weight = record.value;
-            weightTimestamp = record.timestamp;
-        }
-        if (record.measurementType === "height") height = record.value;
+      const record = doc.data();
+      if (record.measurementType === "weight") {
+        weight = record.value;
+        weightTimestamp = record.timestamp;
+      }
+      if (record.measurementType === "height") {
+        height = record.value;
+      }
     });
 
     if (weight && height && weightTimestamp) {
-        const heightInMeters = height / 100;
-        const bmiValue = weight / (heightInMeters * heightInMeters);
-        const bmiQuery = await recordsRef.where("familyId", "==", familyId).where("babyId", "==", babyId).where("type", "==", "bmi").where("timestamp", "==", weightTimestamp).limit(1).get();
-        if (bmiQuery.empty) {
-            await recordsRef.add({
-                familyId, babyId, type: "bmi",
-                value: parseFloat(bmiValue.toFixed(2)),
-                timestamp: weightTimestamp, creatorId, creatorName,
-            });
-            functions.logger.log(`BMI calculated for baby ${babyId}: ${bmiValue.toFixed(2)}`);
-        }
+      const heightInMeters = height / 100;
+      const bmiValue = weight / (heightInMeters * heightInMeters);
+      const bmiQuery = await recordsRef.where("familyId", "==", familyId).where("babyId", "==", babyId).where("type", "==", "bmi").where("timestamp", "==", weightTimestamp).limit(1).get();
+      if (bmiQuery.empty) {
+        await recordsRef.add({
+          familyId, babyId, type: "bmi",
+          value: parseFloat(bmiValue.toFixed(2)),
+          timestamp: weightTimestamp, creatorId, creatorName,
+        });
+        logger.log(`BMI calculated for baby ${babyId}: ${bmiValue.toFixed(2)}`);
+      }
     }
     return null;
 });
@@ -195,28 +207,21 @@ export const deleteUserAccount = onCall(async (request) => {
         throw new HttpsError("invalid-argument", "必須提供要刪除的使用者 ID (userIdToDelete)。");
     }
     
-    functions.logger.log(`Admin ${callerUid} is attempting to delete user ${userIdToDelete}`);
+    logger.log(`Admin ${callerUid} is attempting to delete user ${userIdToDelete}`);
 
     try {
         const userRef = db.collection("users").doc(userIdToDelete);
         const userDoc = await userRef.get();
         if (!userDoc.exists) throw new HttpsError("not-found", `找不到 ID 為 ${userIdToDelete} 的使用者。`);
         
-        // 從 Authentication 系統中刪除使用者帳號
         await admin.auth().deleteUser(userIdToDelete);
-        
-        // 從 Firestore 中刪除使用者文件
         await userRef.delete();
 
-        // 注意：此處未處理紀錄匿名化和從家庭中移除的邏輯，
-        // 這是為了簡化操作，直接刪除使用者。
-        // 如需更複雜的保留資料邏輯，可在此處擴充。
-
-        functions.logger.log(`Successfully deleted user ${userIdToDelete} by admin ${callerUid}`);
+        logger.log(`Successfully deleted user ${userIdToDelete} by admin ${callerUid}`);
         return { success: true, message: `使用者 ${userIdToDelete} 已被成功刪除。` };
 
     } catch (error) {
-        functions.logger.error(`Failed to delete user ${userIdToDelete}`, error);
+        logger.error(`Failed to delete user ${userIdToDelete}`, error);
         if (error instanceof HttpsError) throw error;
         throw new HttpsError("internal", "刪除使用者過程中發生未知錯誤。");
     }
@@ -232,7 +237,7 @@ export const deleteFamily = onCall(async (request) => {
         throw new HttpsError('invalid-argument', '必須提供要刪除的家庭 ID (familyId)。');
     }
     
-    functions.logger.log(`Admin ${request.auth.uid} is attempting to delete family ${familyId}`);
+    logger.log(`Admin ${request.auth.uid} is attempting to delete family ${familyId}`);
     
     const batch = db.batch();
     const familyRef = db.collection('families').doc(familyId);
@@ -243,7 +248,6 @@ export const deleteFamily = onCall(async (request) => {
         
         const familyData = familyDoc.data();
 
-        // 【修正】加上了 !familyData 的檢查，確保 familyData 存在後才讀取其屬性
         if (familyData && familyData.memberUIDs && familyData.memberUIDs.length > 0) {
             for (const uid of familyData.memberUIDs) {
                 const userRef = db.collection('users').doc(uid);
@@ -259,9 +263,9 @@ export const deleteFamily = onCall(async (request) => {
             if (doc.data().type === 'snapshot' && doc.data().imageUrl) {
                 try {
                     const filePath = decodeURIComponent(new URL(doc.data().imageUrl).pathname.split('/o/')[1].split('?')[0]);
-                    storage.bucket().file(filePath).delete().catch(e => functions.logger.error(`Failed to delete storage file ${filePath}`, e));
+                    storage.bucket().file(filePath).delete().catch(e => logger.error(`Failed to delete storage file ${filePath}`, e));
                 } catch(e) {
-                    functions.logger.error(`Invalid imageUrl format, cannot delete from storage: ${doc.data().imageUrl}`, e);
+                    logger.error(`Invalid imageUrl format, cannot delete from storage: ${doc.data().imageUrl}`, e);
                 }
             }
             batch.delete(doc.ref);
@@ -270,11 +274,11 @@ export const deleteFamily = onCall(async (request) => {
         batch.delete(familyRef);
         await batch.commit();
 
-        functions.logger.log(`Successfully deleted family ${familyId} by admin ${request.auth.uid}`);
+        logger.log(`Successfully deleted family ${familyId} by admin ${request.auth.uid}`);
         return { success: true, message: `家庭 ${familyId} 及其所有資料已被成功刪除。` };
 
     } catch (error) {
-        functions.logger.error(`Failed to delete family ${familyId}`, error);
+        logger.error(`Failed to delete family ${familyId}`, error);
         if (error instanceof HttpsError) throw error;
         throw new HttpsError("internal", "刪除家庭過程中發生未知錯誤。");
     }
