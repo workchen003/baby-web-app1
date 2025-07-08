@@ -165,21 +165,22 @@ export const addRecord = async (recordData: Partial<RecordData>, userProfile: Us
   if (!userProfile) throw new Error('User profile is not available.');
   
   try {
-    // 如果外部沒有傳入 timestamp，我們就在客戶端生成一個標準的 Timestamp 物件。
-    // 這樣可以確保 finalTimestamp 的型別永遠是 Timestamp，解決了型別錯誤。
     const finalTimestamp = recordData.timestamp || Timestamp.now();
 
+    // 這裡我們明確定義 dataToSave 的型別，讓 TypeScript 知道它最終會符合 Omit<RecordData, 'id'>
     const dataToSave: Omit<RecordData, 'id'> = {
-        ...recordData,
-        babyId: 'baby_01', // 目前先寫死，未來可擴充
-        creatorName: userProfile.displayName,
-        timestamp: finalTimestamp, // 使用這個確保為 Timestamp 型別的變數
         familyId: recordData.familyId,
+        babyId: 'baby_01', // 目前先寫死，未來可擴充
         creatorId: recordData.creatorId,
-        type: recordData.type as CreatableRecordType,
+        creatorName: userProfile.displayName,
+        type: recordData.type as CreatableRecordType, // 這裡我們斷言 type 是有效的
+        timestamp: finalTimestamp,
+        ...recordData, // 將剩餘的屬性展開
     };
     
-    // 這段邏輯現在可以安全地運作，因為 finalTimestamp 一定是 Timestamp 物件。
+    // 【第四步優化點】
+    // 如果這是一筆「照片」類型的紀錄，我們就預先提取出年份和月份
+    // 這樣做可以讓未來的查詢直接針對這些欄位建立索引，大幅提升效能
     if (recordData.type === 'snapshot') {
         const date = finalTimestamp.toDate();
         dataToSave.year = date.getFullYear();
@@ -238,16 +239,40 @@ export const deleteRecord = async (recordId: string) => {
 export const getSnapshots = async ( familyId: string, options: { perPage?: number; lastDoc?: QueryDocumentSnapshot<DocumentData>; filter?: { year?: number; month?: number; tag?: string; } } = {}) => {
   const perPage = options.perPage || 20;
   const recordsRef = collection(db, "records");
-  const baseConstraints: QueryConstraint[] = [ where("familyId", "==", familyId), where("type", "==", "snapshot") ];
+  
+  // 基本的查詢限制
+  const baseConstraints: QueryConstraint[] = [ 
+    where("familyId", "==", familyId), 
+    where("type", "==", "snapshot") 
+  ];
+  
+  // 根據篩選條件動態增加查詢限制
   if (options.filter) {
-    if (options.filter.year) baseConstraints.push(where("year", "==", options.filter.year));
-    if (options.filter.month) baseConstraints.push(where("month", "==", options.filter.month));
-    if (options.filter.tag && options.filter.tag.trim() !== '') baseConstraints.push(where("tags", "array-contains", options.filter.tag.trim()));
+    if (options.filter.year) {
+      baseConstraints.push(where("year", "==", options.filter.year));
+    }
+    if (options.filter.month) {
+      baseConstraints.push(where("month", "==", options.filter.month));
+    }
+    if (options.filter.tag && options.filter.tag.trim() !== '') {
+      baseConstraints.push(where("tags", "array-contains", options.filter.tag.trim()));
+    }
   }
-  baseConstraints.push(orderBy("timestamp", "desc"), limit(perPage));
-  if (options.lastDoc) baseConstraints.push(startAfter(options.lastDoc));
+
+  // 加入排序和分頁限制
+  baseConstraints.push(orderBy("timestamp", "desc"));
+  if (options.lastDoc) {
+    baseConstraints.push(startAfter(options.lastDoc));
+  }
+  baseConstraints.push(limit(perPage));
+  
   const q = query(recordsRef, ...baseConstraints);
   const querySnapshot = await getDocs(q);
+  
   const snapshots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  return { snapshots, lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1] };
+  
+  return { 
+    snapshots, 
+    lastVisible: querySnapshot.docs[querySnapshot.docs.length - 1] 
+  };
 };
