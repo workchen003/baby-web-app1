@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBabyProfile, updateBabyProfile, BabyProfile, MilkType } from '@/lib/babies';
 import Link from 'next/link';
+import { Timestamp } from 'firebase/firestore';
 
+// 輔助函式：將 Date 物件轉為 YYYY-MM-DD 格式的字串
 const dateToString = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
@@ -29,8 +31,11 @@ export default function EditBabyProfileFormPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   
+  // 【重要】我們假設每個家庭目前只有一個寶寶，ID 暫時寫死
+  // 未來要支援多寶寶時，會從 userProfile 或其他地方動態獲取
   const babyId = 'baby_01'; 
 
+  // 將從資料庫讀取的 profile 資料填入表單
   const setFormData = useCallback((profile: BabyProfile | null) => {
     if (profile) {
       setName(profile.name);
@@ -50,9 +55,10 @@ export default function EditBabyProfileFormPage() {
         router.push('/');
         return;
     }
+    // 確保 userProfile 載入完成
     if (userProfile) {
       setIsLoading(true);
-      getBabyProfile(babyId)
+      getBabyProfile(babyId) // 【核心修改】呼叫新的函式
         .then(setFormData)
         .catch(err => {
             console.error("Error fetching baby profile:", err);
@@ -64,8 +70,9 @@ export default function EditBabyProfileFormPage() {
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user || !userProfile?.familyIDs?.[0]) {
-        setError('無法驗證使用者身份');
+    const familyId = userProfile?.familyIDs?.[0];
+    if (!user || !familyId) {
+        setError('無法驗證使用者或家庭身份，請重新登入。');
         return;
     }
 
@@ -75,18 +82,19 @@ export default function EditBabyProfileFormPage() {
     try {
       const allergensArray = knownAllergens.split(',').map(item => item.trim()).filter(item => item !== '');
       
-      const profileData: Partial<BabyProfile> = {
+      const profileData = {
         name,
-        birthDate: new Date(birthDate),
+        birthDate: Timestamp.fromDate(new Date(birthDate)), // 【重要】儲存時使用 Firestore 的 Timestamp
         gender,
         gestationalAgeWeeks: Number(gestationalAgeWeeks),
-        familyId: userProfile.familyIDs[0],
+        familyId: familyId, // 【重要】確保 familyId 被寫入
         milkType,
         formulaBrand: milkType === 'formula' || milkType === 'mixed' ? formulaBrand : '',
         formulaCalories: milkType === 'formula' || milkType === 'mixed' ? Number(formulaCalories) : 0,
         knownAllergens: allergensArray,
       };
 
+      // 【核心修改】呼叫新的更新函式
       await updateBabyProfile(babyId, profileData as any);
       
       alert('寶寶資料儲存成功！');
