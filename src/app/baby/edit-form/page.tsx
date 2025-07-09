@@ -1,175 +1,157 @@
 // src/app/baby/edit-form/page.tsx
 'use client';
 
-import { useState, useEffect, FormEvent, useCallback } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { getBabyProfile, updateBabyProfile, BabyProfile, MilkType } from '@/lib/babies';
-import Link from 'next/link';
+import { getBabyProfile, updateBabyProfile, BabyProfile } from '@/lib/babies';
 import { Timestamp } from 'firebase/firestore';
 
-// 輔助函式：將 Date 物件轉為 YYYY-MM-DD 格式的字串
-const dateToString = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-export default function EditBabyProfileFormPage() {
-  const { user, userProfile, loading } = useAuth();
+export default function BabyEditFormPage() {
+  const { user, userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
+  
+  const [baby, setBaby] = useState({
+    name: '',
+    birthDate: '', 
+    gender: 'boy',
+  });
 
-  // 表單 State
-  const [name, setName] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [gender, setGender] = useState<'boy' | 'girl'>('boy');
-  const [gestationalAgeWeeks, setGestationalAgeWeeks] = useState(40);
-  const [milkType, setMilkType] = useState<MilkType>('breast');
-  const [formulaBrand, setFormulaBrand] = useState('');
-  const [formulaCalories, setFormulaCalories] = useState('');
-  const [knownAllergens, setKnownAllergens] = useState('');
-  
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
-  
-  // 【重要】我們假設每個家庭目前只有一個寶寶，ID 暫時寫死
-  // 未來要支援多寶寶時，會從 userProfile 或其他地方動態獲取
+  const [isNewProfile, setIsNewProfile] = useState(false);
+
   const babyId = 'baby_01'; 
 
-  // 將從資料庫讀取的 profile 資料填入表單
-  const setFormData = useCallback((profile: BabyProfile | null) => {
-    if (profile) {
-      setName(profile.name);
-      setBirthDate(dateToString(profile.birthDate));
-      setGender(profile.gender);
-      setGestationalAgeWeeks(profile.gestationalAgeWeeks);
-      setMilkType(profile.milkType || 'breast');
-      setFormulaBrand(profile.formulaBrand || '');
-      setFormulaCalories(profile.formulaCalories?.toString() || '');
-      setKnownAllergens(profile.knownAllergens?.join(', ') || '');
-    }
-  }, []);
-
-  // 載入現有資料
   useEffect(() => {
-    if (!loading && !user) {
-        router.push('/');
-        return;
-    }
-    // 確保 userProfile 載入完成
-    if (userProfile) {
-      setIsLoading(true);
-      getBabyProfile(babyId) // 【核心修改】呼叫新的函式
-        .then(setFormData)
-        .catch(err => {
-            console.error("Error fetching baby profile:", err);
-            setError("讀取寶寶資料失敗。");
-        })
-        .finally(() => setIsLoading(false));
-    }
-  }, [user, userProfile, loading, router, setFormData]);
+    if (authLoading || !userProfile) return;
 
-  const handleSave = async (e: FormEvent) => {
+    if (!userProfile.familyIDs || userProfile.familyIDs.length === 0) {
+      router.push('/onboarding/create-family');
+      return;
+    }
+
+    getBabyProfile(babyId)
+      .then(profile => {
+        if (profile) {
+          setBaby({
+            name: profile.name,
+            gender: profile.gender,
+            birthDate: (profile.birthDate as unknown as Timestamp).toDate().toISOString().split('T')[0],
+          });
+          setIsNewProfile(false);
+        } else {
+          setIsNewProfile(true);
+          setBaby(prev => ({ ...prev, birthDate: new Date().toISOString().split('T')[0] }));
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching baby profile:", err);
+        setError("讀取寶寶資料時發生錯誤。");
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [authLoading, userProfile, router]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setBaby(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const familyId = userProfile?.familyIDs?.[0];
-    if (!user || !familyId) {
-        setError('無法驗證使用者或家庭身份，請重新登入。');
-        return;
-    }
-
-    setIsSaving(true);
     setError('');
 
+    if (!user || !userProfile || !userProfile.familyIDs?.[0]) {
+      setError("使用者或家庭資訊不完整，無法儲存。");
+      return;
+    }
+
+    if (!baby.name || !baby.birthDate) {
+      setError("請填寫寶寶的名字和出生日期。");
+      return;
+    }
+
     try {
-      const allergensArray = knownAllergens.split(',').map(item => item.trim()).filter(item => item !== '');
+      setIsLoading(true);
       
-      const profileData = {
-        name,
-        birthDate: Timestamp.fromDate(new Date(birthDate)), // 【重要】儲存時使用 Firestore 的 Timestamp
-        gender,
-        gestationalAgeWeeks: Number(gestationalAgeWeeks),
-        familyId: familyId, // 【重要】確保 familyId 被寫入
-        milkType,
-        formulaBrand: milkType === 'formula' || milkType === 'mixed' ? formulaBrand : '',
-        formulaCalories: milkType === 'formula' || milkType === 'mixed' ? Number(formulaCalories) : 0,
-        knownAllergens: allergensArray,
+      const profileToSave: Omit<BabyProfile, 'id'> = {
+        name: baby.name,
+        birthDate: Timestamp.fromDate(new Date(baby.birthDate)),
+        gender: baby.gender as 'boy' | 'girl',
+        familyId: userProfile.familyIDs[0],
       };
 
-      // 【核心修改】呼叫新的更新函式
-      await updateBabyProfile(babyId, profileData as any);
+      await updateBabyProfile(babyId, profileToSave);
       
-      alert('寶寶資料儲存成功！');
-      router.push('/baby/edit'); // 儲存後導向到唯讀的顯示頁面
+      router.push('/dashboard');
 
     } catch (err) {
-      console.error(err);
-      setError('儲存失敗，請稍後再試。');
-    } finally {
-      setIsSaving(false);
+      console.error("Failed to save baby profile:", err);
+      setError("儲存失敗，請檢查您的網路連線或稍後再試。");
+      setIsLoading(false);
     }
   };
 
-  if (isLoading) {
-    return <div className="flex min-h-[calc(100vh-80px)] items-center justify-center">載入中...</div>;
-  }
-
+  // ✅【關鍵修正】: 移除外層的 <AppLayout>
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-80px)] bg-gray-50 py-12">
-      <div className="p-8 bg-white rounded-lg shadow-md w-full max-w-lg">
-            <h1 className="text-2xl font-bold mb-6 text-center">編輯寶寶資料</h1>
-            <form onSubmit={handleSave} className="space-y-6">
-              <fieldset className="space-y-4 p-4 border rounded-md">
-                <legend className="text-lg font-semibold px-2">基本資料</legend>
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">寶寶的名字</label>
-                  <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required />
-                </div>
-                <div>
-                  <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700">出生日期</label>
-                  <input id="birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">生理性別</label>
-                  <div className="mt-2 flex gap-8"><label className="inline-flex items-center"><input type="radio" value="boy" checked={gender === 'boy'} onChange={() => setGender('boy')} className="form-radio h-4 w-4 text-indigo-600"/><span className="ml-2">男孩</span></label><label className="inline-flex items-center"><input type="radio" value="girl" checked={gender === 'girl'} onChange={() => setGender('girl')} className="form-radio h-4 w-4 text-pink-600"/><span className="ml-2">女孩</span></label></div>
-                </div>
-                <div>
-                  <label htmlFor="gestationalAgeWeeks" className="block text-sm font-medium text-gray-700">出生時的週數</label>
-                  <input id="gestationalAgeWeeks" type="number" value={gestationalAgeWeeks} onChange={(e) => setGestationalAgeWeeks(Number(e.target.value))} min="23" max="42" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" required />
-                  <p className="text-xs text-gray-500 mt-1">用於早產兒矯正年齡計算，預設為 40 (足月)。</p>
-                </div>
-              </fieldset>
-              <fieldset className="space-y-4 p-4 border rounded-md">
-                 <legend className="text-lg font-semibold px-2">餐食設定</legend>
-                 <div>
-                    <label htmlFor="milkType" className="block text-sm font-medium text-gray-700">主要奶類類型</label>
-                    <select id="milkType" value={milkType} onChange={(e) => setMilkType(e.target.value as MilkType)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm">
-                        <option value="breast">母乳</option>
-                        <option value="formula">配方奶</option>
-                        <option value="mixed">混合餵養</option>
-                    </select>
-                 </div>
-                 {(milkType === 'formula' || milkType === 'mixed') && (
-                    <>
-                        <div>
-                            <label htmlFor="formulaBrand" className="block text-sm font-medium text-gray-700">配方奶品牌/系列</label>
-                            <input id="formulaBrand" type="text" value={formulaBrand} onChange={(e) => setFormulaBrand(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：能恩水解1號"/>
-                        </div>
-                        <div>
-                            <label htmlFor="formulaCalories" className="block text-sm font-medium text-gray-700">配方奶熱量 (每100ml)</label>
-                            <input id="formulaCalories" type="number" value={formulaCalories} onChange={(e) => setFormulaCalories(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="請參考奶粉罐身標示"/>
-                        </div>
-                    </>
-                 )}
-                 <div>
-                    <label htmlFor="knownAllergens" className="block text-sm font-medium text-gray-700">已知過敏原</label>
-                    <input id="knownAllergens" type="text" value={knownAllergens} onChange={(e) => setKnownAllergens(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="例如：蛋, 魚, 牛奶 (用逗號分隔)"/>
-                 </div>
-              </fieldset>
-              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-              <div className="flex gap-4 pt-4">
-                <Link href="/baby/edit" className="w-full text-center px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">取消</Link>
-                <button type="submit" disabled={isSaving} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 disabled:bg-gray-400">{isSaving ? '儲存中...' : '儲存資料'}</button>
-              </div>
-            </form>
+    <div className="flex flex-col items-center justify-center py-8">
+      <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-md">
+        <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
+          {isNewProfile ? "建立寶寶的第一份資料" : "編輯寶寶資料"}
+        </h1>
+        { (isLoading && !isNewProfile) ? <div className="text-center p-8">讀取資料中...</div> : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">寶寶的名字</label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={baby.name}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700">出生日期</label>
+              <input
+                type="date"
+                id="birthDate"
+                name="birthDate"
+                value={baby.birthDate}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="gender" className="block text-sm font-medium text-gray-700">性別</label>
+              <select
+                id="gender"
+                name="gender"
+                value={baby.gender}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="boy">男生</option>
+                <option value="girl">女生</option>
+              </select>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
+              >
+                {isLoading ? "儲存中..." : "儲存資料"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

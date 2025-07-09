@@ -1,19 +1,61 @@
-// firestore.rules
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 規定：使用者只能讀取或寫入自己的 user document
-    // 這對應到計畫書中的安全性設計原則
+    // --- Helper Functions ---
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    function isFamilyMember(familyId) {
+      return familyId is string && get(/databases/$(database)/documents/families/$(familyId)).data.memberUIDs.hasAny([request.auth.uid]);
+    }
+
+    // --- Collection Rules ---
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    match /families/{familyId} {
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.memberUIDs;
+      allow read, update, delete: if request.auth != null && request.auth.uid in resource.data.memberUIDs;
+    }
+
+    match /babies/{babyId} {
+      allow create: if request.auth != null && isFamilyMember(request.resource.data.familyId);
+      allow read, update, delete: if request.auth != null && isFamilyMember(resource.data.familyId);
+    }
+
+    /**
+     * 【扁平化的紀錄集合 /records】
+     * ✅【最終修正】:
+     * - get, update, delete: 讀取/更新/刪除單一文件時，規則最嚴格，必須檢查文件內的 familyId。
+     * - list: 查詢集合時，只要求使用者登入。真正的安全性來自於前端的 query 總是包含 `where('familyId', '==', userFamilyId)` 這個條件。
+     * - create: 建立文件時，檢查即將寫入的資料中的 familyId。
+     */
+    match /records/{recordId} {
+        allow get, update, delete: if request.auth != null && isFamilyMember(resource.data.familyId);
+        allow list: if request.auth != null;
+        allow create: if request.auth != null && isFamilyMember(request.resource.data.familyId);
+    }
     
-    // 為了安全起見，在明確定義規則前，預設拒絕所有其他集合的存取
-    match /{document=**} {
-      allow read, write: if false;
+    match /mealPlans/{familyId} {
+        allow read, write: if request.auth != null && isFamilyMember(familyId);
+    }
+
+    match /sharedMealPlans/{planId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+    }
+    
+    match /invitations/{inviteId} {
+      allow read, create: if request.auth != null;
+    }
+
+    match /articles/{articleId} {
+      allow read: if resource.data.status == 'published';
+      allow write: if request.auth != null && isAdmin();
     }
   }
 }

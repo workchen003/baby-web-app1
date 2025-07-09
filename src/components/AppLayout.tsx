@@ -1,4 +1,3 @@
-// src/components/AppLayout.tsx
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,8 +11,10 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import FloatingActionButton from './FloatingActionButton';
 import AddRecordModal from './AddRecordModal';
 import { CreatableRecordType, RecordData } from '@/lib/records';
+import { Timestamp } from 'firebase/firestore';
 import { Users, LogOut, Settings, Plus, Info, Baby, BookOpen, BarChart3, Bot, Syringe, Sun } from 'lucide-react';
 
+// 輔助函式：計算年齡
 const calculateAge = (birthDate: Date): string => {
     const today = new Date();
     const birth = new Date(birthDate);
@@ -27,6 +28,7 @@ const calculateAge = (birthDate: Date): string => {
     return age_y > 0 ? `${age_y} 歲 ${age_m} 個月` : `${age_m} 個月`;
 };
 
+// 頁首元件
 const AppHeader = () => {
     const { user, userProfile } = useAuth();
     const pathname = usePathname();
@@ -51,8 +53,14 @@ const AppHeader = () => {
 
     useEffect(() => {
         if (userProfile?.familyIDs?.[0]) {
-            getBabyProfile('baby_01').then(setBabyProfile);
+            const babyId = 'baby_01';
+            getBabyProfile(babyId).then(profile => {
+                setBabyProfile(profile);
+            });
         }
+    }, [userProfile]);
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
                 setProfileMenuOpen(false);
@@ -60,9 +68,16 @@ const AppHeader = () => {
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [userProfile]);
+    }, []);
 
-    const babyAge = useMemo(() => babyProfile ? calculateAge(new Date(babyProfile.birthDate)) : null, [babyProfile]);
+    // ✅【最終修正】: 使用最嚴謹的「可選串聯 (Optional Chaining)」和型別檢查
+    const babyAge = useMemo(() => {
+        // 只有當 babyProfile、birthDate 都存在，且 birthDate 是一個有 toDate 方法的物件時，才進行計算
+        if (babyProfile?.birthDate && typeof babyProfile.birthDate.toDate === 'function') {
+            return calculateAge(babyProfile.birthDate.toDate());
+        }
+        return null; // 其他任何情況都安全地回傳 null
+    }, [babyProfile]);
 
     return (
         <header className="sticky top-0 z-30 w-full bg-white/90 backdrop-blur-sm shadow-sm flex-shrink-0">
@@ -92,7 +107,7 @@ const AppHeader = () => {
 
             <div className="flex items-center gap-4">
                 {babyProfile && (
-                     <Link href="/baby/edit" className="text-sm text-right hidden lg:block">
+                     <Link href="/baby/edit-form" className="text-sm text-right hidden lg:block">
                         <p className="font-bold text-gray-800">{babyProfile.name}</p>
                         <p className="text-xs text-gray-500">{babyAge}</p>
                     </Link>
@@ -125,6 +140,7 @@ const AppHeader = () => {
     );
 }
 
+// 頁尾元件
 const AppFooter = () => (
     <footer className="w-full bg-gray-100 py-6 flex-shrink-0 mt-12">
         <div className="container mx-auto flex flex-col md:flex-row items-center justify-center gap-x-6 gap-y-2 px-4 text-sm text-gray-500">
@@ -147,53 +163,63 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalConfig, setModalConfig] = useState<{ type: CreatableRecordType, initialData?: Partial<RecordData> } | null>(null);
     const [babyProfileForModal, setBabyProfileForModal] = useState<BabyProfile | null>(null);
-
-    // ▼▼▼【核心修正】▼▼▼
-    // 定義一個不需要被引導的「白名單」路徑
-    const onboardingWhitelist = ['/', '/onboarding/create-family', '/join'];
+    
+    const onboardingWhitelist = ['/onboarding/create-family', '/join', '/baby/edit-form'];
 
     useEffect(() => {
-        if (user) {
-            getBabyProfile('baby_01').then(setBabyProfileForModal);
+        if (loading) return;
+        
+        if (!user) {
+          if (pathname !== '/') router.push('/');
+          return;
         }
 
-        if (loading) return;
-
-        if (user && userProfile) {
-            // 檢查使用者是否沒有家庭
+        if (userProfile) {
             if (!userProfile.familyIDs || userProfile.familyIDs.length === 0) {
-                // 檢查目前的路徑是否在白名單內，如果不在，才進行導引
-                if (!onboardingWhitelist.includes(pathname)) {
+                if (pathname !== '/onboarding/create-family' && !pathname.startsWith('/join')) {
                     router.push('/onboarding/create-family');
                 }
+                return;
             }
+
+            const babyId = 'baby_01';
+            getBabyProfile(babyId).then(profile => {
+                if (profile) {
+                    setBabyProfileForModal(profile);
+                } else {
+                    if (pathname !== '/baby/edit-form') {
+                        router.push('/baby/edit-form');
+                    }
+                }
+            });
         }
-    }, [user, userProfile, loading, pathname, router, onboardingWhitelist]);
-    // ▲▲▲【核心修正】▲▲▲
+    }, [user, userProfile, loading, pathname, router]);
 
     const handleAddRecord = (type: CreatableRecordType) => {
         setModalConfig({ type });
         setIsModalOpen(true);
     };
     
-    // 如果目前路徑是在 onboarding 白名單中，則不使用 AppLayout 的主要佈局（頁首、頁腳等）
-    if (onboardingWhitelist.includes(pathname)) {
+    const publicPages = ['/', '/about'];
+    if (publicPages.includes(pathname) && !user) {
+        return <>{children}</>
+    }
+     if (onboardingWhitelist.some(path => pathname.startsWith(path)) && user) {
         return <>{children}</>;
     }
     
     if (loading) {
-        return <div className="flex h-screen w-screen items-center justify-center">載入中...</div>
+        return <div className="flex h-screen w-screen items-center justify-center">驗證使用者身份中...</div>
     }
 
-    if (!user && typeof window !== 'undefined') {
-        router.push('/');
-        return null;
+    if (!user) {
+        return <>{children}</>;
     }
-
+    
     return (
-        <div className="flex flex-col min-h-screen bg-gray-100">
+        <div className="flex flex-col min-h-screen bg-gray-50">
             <AppHeader />
-            <main className="container mx-auto flex-grow">
+            <main className="container mx-auto flex-grow py-8 px-4 sm:px-6 lg:px-8">
                 {children}
             </main>
             <AppFooter />

@@ -1,82 +1,41 @@
-// src/lib/babies.ts
-
 import { db } from './firebase';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  Timestamp,
-  DocumentData,
-} from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 
-// 定義奶類類型
-export type MilkType = 'breast' | 'formula' | 'mixed';
-
-// 定義寶寶的個人資料結構
-export interface BabyProfile extends DocumentData {
+/**
+ * 定義寶寶個人資料的資料結構。
+ * - birthDate 使用 Firestore 原生的 Timestamp 型別，以確保資料一致性。
+ */
+export interface BabyProfile {
   id: string;
   name: string;
-  birthDate: Date;
+  birthDate: Timestamp;
   gender: 'boy' | 'girl';
-  gestationalAgeWeeks: number; // 出生週數
-  familyId: string; // 【重要】標示此寶寶屬於哪個家庭
-
-  // 新增的詳細資料欄位
-  milkType?: MilkType;
-  formulaBrand?: string;
-  formulaCalories?: number; // 每 100ml 的熱量
-  knownAllergens?: string[];
-  watchListFoods?: string[];
+  familyId: string;
 }
 
 /**
- * 【核心修改】獲取指定 ID 的寶寶資料
- * @param babyId - 寶寶的唯一文件 ID
- * @returns 回傳寶寶的個人資料，若不存在則回傳 null
+ * 根據 babyId 從 Firestore 中讀取寶寶的個人資料。
+ * @param babyId - 寶寶的文件 ID (例如 'baby_01')。
+ * @returns - 如果文件存在，則回傳 BabyProfile 物件；否則回傳 null。
  */
-export const getBabyProfile = async (
-  babyId: string
-): Promise<BabyProfile | null> => {
-  if (!babyId) {
-    console.warn("getBabyProfile called with no babyId.");
-    return null;
-  }
-  const babyRef = doc(db, 'babies', babyId);
-  const babySnap = await getDoc(babyRef);
+export async function getBabyProfile(babyId: string): Promise<BabyProfile | null> {
+  const babyDocRef = doc(db, 'babies', babyId);
+  const babyDocSnap = await getDoc(babyDocRef);
 
-  if (!babySnap.exists()) {
-    console.warn(`Baby profile with ID ${babyId} not found.`);
-    return null;
+  if (babyDocSnap.exists()) {
+    // 將讀取到的資料轉換為 BabyProfile 型別
+    return { id: babyDocSnap.id, ...babyDocSnap.data() } as BabyProfile;
   }
-
-  const data = babySnap.data();
-  // 將從 Firestore 讀取的 Timestamp 物件轉換回 JavaScript 的 Date 物件
-  return {
-    id: babySnap.id,
-    name: data.name,
-    birthDate: (data.birthDate as Timestamp).toDate(),
-    gender: data.gender,
-    gestationalAgeWeeks: data.gestationalAgeWeeks,
-    familyId: data.familyId,
-    milkType: data.milkType,
-    formulaBrand: data.formulaBrand,
-    formulaCalories: data.formulaCalories,
-    knownAllergens: data.knownAllergens || [],
-    watchListFoods: data.watchListFoods || [],
-  };
-};
+  return null;
+}
 
 /**
- * 【核心修改】更新或建立寶寶的個人資料
- * @param babyId - 寶寶的唯一文件 ID
- * @param data - 要更新或建立的資料
+ * 建立或更新寶寶的個人資料。
+ * 使用 setDoc 搭配 { merge: true }，如果文件已存在則更新，不存在則建立。
+ * @param babyId - 寶寶的文件 ID。
+ * @param data - 要更新或建立的資料，可以是 BabyProfile 的部分欄位。
  */
-export const updateBabyProfile = async (
-  babyId: string,
-  // 這裡我們要求傳入的資料必須包含 familyId
-  data: Omit<BabyProfile, 'id'> & { familyId: string }
-) => {
-  const babyRef = doc(db, 'babies', babyId);
-  // 使用 setDoc 搭配 { merge: true }，如果文件不存在就會建立，如果存在就會更新指定的欄位。
-  await setDoc(babyRef, data, { merge: true });
-};
+export async function updateBabyProfile(babyId: string, data: Partial<Omit<BabyProfile, 'id'>>): Promise<void> {
+  const babyDocRef = doc(db, 'babies', babyId);
+  await setDoc(babyDocRef, data, { merge: true });
+}
