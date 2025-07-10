@@ -1,9 +1,10 @@
+// src/app/onboarding/create-family/page.tsx
 'use client';
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { createFamily } from '@/lib/family';
+import { createFamily } from '@/lib/family'; // 引入家庭建立函數
 
 export default function CreateFamilyPage() {
   const { user, userProfile } = useAuth();
@@ -27,15 +28,21 @@ export default function CreateFamilyPage() {
     setError('');
 
     try {
+      // 呼叫建立家庭的函數
       await createFamily(userProfile, familyName);
       
-      // ✅【最終修正】: 手動觸發頁面跳轉至儀表板
-      // 這會讓 AppLayout 的導向邏輯接手，並將您帶到正確的下一步。
+      // ✅ 成功建立家庭後，導向至儀表板
+      // 這會觸發 dashboard 頁面重新載入，並在 AuthContext 更新後顯示正確內容
       router.push('/dashboard');
       
     } catch (err) {
       console.error("Failed to create family:", err);
-      setError('建立家庭時發生錯誤，請稍後再試。');
+      // 這裡可以根據錯誤類型提供更詳細的訊息，例如權限錯誤
+      if (err instanceof Error && err.message.includes('permission-denied')) {
+        setError('建立家庭時權限不足，請檢查您的權限設定或稍後再試。');
+      } else {
+        setError('建立家庭時發生錯誤，請稍後再試。');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +75,7 @@ export default function CreateFamilyPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? '建立中...' : '建立家庭'}
             </button>

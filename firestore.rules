@@ -2,41 +2,62 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 使用者只能讀寫自己的資料
+    // 用戶 (users) 集合的規則
+    // 允許已登入用戶創建自己的 user profile
+    // 允許用戶讀取和更新自己的 user profile
     match /users/{userId} {
       allow read, update: if request.auth != null && request.auth.uid == userId;
-      // 允許後端 Cloud Function 建立使用者資料
       allow create: if request.auth != null;
     }
 
-    // 家庭資料：只有家庭成員可以讀寫
+    // 家庭 (families) 集合的規則
+    // 允許家庭成員讀取其家庭資料
+    // 允許已登入用戶創建家庭
+    // 允許家庭成員更新其家庭資料
     match /families/{familyId} {
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.memberUIDs;
-      allow create: if request.auth != null; // 允許登入者建立家庭
-    }
-
-    // 寶寶資料：只有家庭成員可以讀寫
-    match /babies/{babyId} {
-        allow read, write: if request.auth != null && get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.memberUIDs[0] == request.auth.uid;
-    }
-    
-    // 照護紀錄：只有家庭成員可以讀寫
-    match /records/{recordId} {
-      allow read, write, delete: if request.auth != null && get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.memberUIDs[0] == request.auth.uid;
+      allow read: if request.auth != null && request.auth.uid in resource.data.memberUIDs;
       allow create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid in resource.data.memberUIDs;
     }
 
-    // 文章：管理員可讀寫，所有人可讀取已發布的文章
-    match /articles/{articleId} {
-      allow read: if resource.data.status == 'published';
-      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
+    // 育兒記錄 (records) 集合的規則
+    match /records/{recordId} { // <--- 重要修正：確保 records 規則在一個 match 區塊內
+      // 允許讀取：
+      // 1. 用戶已登入 (request.auth != null)
+      // 2. 且該 record 所屬的 family 文件存在 (exists(/databases/$(database)/documents/families/$(resource.data.familyId)))
+      // 3. 且已登入用戶的 UID 在該 family 文件的 memberUIDs 陣列中 (request.auth.uid in get(...).data.memberUIDs)
+      allow read: if request.auth != null
+                   && exists(/databases/$(database)/documents/families/$(resource.data.familyId))
+                   && request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.memberUIDs;
 
-    // 邀請碼：登入者可建立，登入者可讀取（用於驗證）
-    match /invitations/{inviteId} {
-      allow read, create: if request.auth != null;
-      // 只有 Cloud Function 可以刪除
-      allow delete: if false; 
-    }
-  }
-}
+      // 允許創建：
+      // 1. 用戶已登入
+      // 2. 且新創建的 record 所屬的 family 文件存在 (使用 request.resource.data.familyId 因為是新增資料)
+      // 3. 且已登入用戶的 UID 在該 family 文件的 memberUIDs 陣列中
+      allow create: if request.auth != null
+                   && exists(/databases/$(database)/documents/families/$(request.resource.data.familyId))
+                   && request.auth.uid in get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.memberUIDs;
+
+      // 允許更新、刪除：
+      // 1. 用戶已登入
+      // 2. 且該 record 所屬的 family 文件存在 (使用 resource.data.familyId 因為是現有資料)
+      // 3. 且已登入用戶的 UID 在該 family 文件的 memberUIDs 陣列中
+      allow update, delete: if request.auth != null
+                           && exists(/databases/$(database)/documents/families/$(resource.data.familyId))
+                           && request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.memberUIDs;
+    } // records 集合的 match 區塊結束
+
+    // 寶寶 (babies) 集合的規則
+    match /babies/{babyId} { // <--- 重要修正：確保 babies 規則在一個 match 區塊內
+      allow read: if request.auth != null
+                   && exists(/databases/$(database)/documents/families/$(resource.data.familyId))
+                   && request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.memberUIDs;
+      allow create: if request.auth != null
+                     && exists(/databases/$(database)/documents/families/$(request.resource.data.familyId))
+                     && request.auth.uid in get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.memberUIDs;
+      allow update, delete: if request.auth != null
+                             && exists(/databases/$(database)/documents/families/$(resource.data.familyId))
+                             && request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.memberUIDs;
+    } // babies 集合的 match 區塊結束
+  } // /databases/{database}/documents 區塊結束
+} // service cloud.firestore 區塊結束

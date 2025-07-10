@@ -11,7 +11,7 @@ import { createFamilyInvitation } from '@/lib/functions';
 interface FamilyDetails {
     id: string;
     name: string;
-    members: string[];
+    members: string[]; // 確保這個屬性存在且是 string[] 類型
     creatorId: string;
 }
 
@@ -42,6 +42,7 @@ export default function FamilyManagePage() {
                     setIsLoading(false);
                 }
             } else if (userProfile) {
+                // 如果用戶登入但沒有家庭ID，也表示載入完成
                 setIsLoading(false);
             }
         };
@@ -55,8 +56,10 @@ export default function FamilyManagePage() {
             // ✅【關鍵修正】: 正確呼叫 httpsCallable 回傳的函式
             const result = await createFamilyInvitation({ familyId: family.id });
             // result.data 才是您在後端回傳的物件
-            if (result && result.data.code) {
+            if (result && result.data && result.data.code) { // 增加 result.data 的檢查
                 setInvitationCode(result.data.code);
+            } else {
+                setError('建立邀請碼失敗，未收到有效的邀請碼。');
             }
         } catch (err) {
             console.error("Error creating invitation:", err);
@@ -68,6 +71,9 @@ export default function FamilyManagePage() {
         navigator.clipboard.writeText(invitationCode).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            setError('複製邀請碼失敗。');
         });
     };
     
@@ -75,9 +81,15 @@ export default function FamilyManagePage() {
         return <div className="p-8 text-center">正在載入家庭資料...</div>;
     }
 
-    if (!family) {
-        return <div className="p-8 text-center">您目前沒有加入任何家庭。</div>;
+    if (!userProfile || !userProfile.familyIDs || userProfile.familyIDs.length === 0) {
+        return <div className="p-8 text-center">您目前沒有加入任何家庭，請創建或加入一個家庭。</div>;
     }
+
+    if (!family) {
+        // 這會在 isLoading 為 false 但 family 仍為 null 時顯示，例如找不到家庭資料的情況
+        return <div className="p-8 text-center">{error || '找不到家庭資料。'}</div>;
+    }
+
 
     return (
         <div className="max-w-2xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -88,11 +100,16 @@ export default function FamilyManagePage() {
                 
                 <div className="mt-4">
                     <h3 className="text-lg font-medium text-gray-700">家庭成員</h3>
-                    <ul className="mt-2 list-disc list-inside bg-gray-50 p-4 rounded-md">
-                        {family.members.map((member, index) => (
-                            <li key={index} className="text-gray-600">{member}</li>
-                        ))}
-                    </ul>
+                    {/* ✅【關鍵修正】: 添加防禦性檢查以避免 TypeError */}
+                    {family.members && family.members.length > 0 ? (
+                        <ul className="mt-2 list-disc list-inside bg-gray-50 p-4 rounded-md">
+                            {family.members.map((member, index) => (
+                                <li key={index} className="text-gray-600">{member}</li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-2 text-gray-600">目前沒有家庭成員資料。</p>
+                    )}
                 </div>
 
                 <div className="mt-6 border-t pt-6">
